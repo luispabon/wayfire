@@ -1,0 +1,30 @@
+Source: wayfire
+Section: x11
+Priority: optional
+Maintainer: Luis Pabon <luis.pabon@auronconsulting.co.uk>
+Build-Depends: debhelper (>= 11),
+                      libwayland-dev,
+                      libwayland-server0,
+                      libwayland-client0,
+                      libwayland-cursor0,
+                      libcairo2-dev,
+                      libdrm-dev,
+                      libegl1-mesa-dev,
+                      libgles2-mesa-dev,
+                      libglm-dev,
+                      libinput-dev (>= 1.7.0),
+                      libpixman-1-dev,
+                      libxkbcommon-dev,
+                      libwlroots-dev,
+                      wayland-protocols (>= 1.12),
+                      meson,
+                      pkg-config
+Standards-Version: 4.3.0
+Homepage: https://wayfire.org/
+
+Package: wayfire
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, libwlroots0 (>=0.4)
+Recommends: sway-backgrounds
+Suggests: swayidle, swaylock, swaybg
+Description: 3D wayland compositor
