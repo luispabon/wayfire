@@ -1,7 +1,7 @@
 sway-backgrounds/
 tmp/
 usr/
-mako/
+wayfire/
 debhelper-build-stamp
 files
 *.log

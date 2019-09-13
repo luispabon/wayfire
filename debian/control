@@ -16,6 +16,7 @@ Build-Depends: debhelper (>= 11),
                       libpixman-1-dev,
                       libxkbcommon-dev,
                       libwlroots-dev,
+                      libwf-config,
                       wayland-protocols (>= 1.12),
                       meson,
                       pkg-config
