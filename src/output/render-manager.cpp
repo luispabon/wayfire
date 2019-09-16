@@ -335,6 +335,11 @@ class wf::render_manager::impl
     std::unique_ptr<effect_hook_manager_t> effects;
     std::unique_ptr<postprocessing_manager_t> postprocessing;
 
+    wf_option background_color_opt;
+    wf_option_callback background_color_opt_changed;
+    /* The default color which is user configurable */
+    wf_color default_color = {0.0f, 0.0f, 0.0f, 1.0f};
+
     impl(output_t *o)
         : output(o)
     {
@@ -348,7 +353,24 @@ class wf::render_manager::impl
         on_frame.connect(&output_damage->damage_manager->events.frame);
 
         init_default_streams();
+
+        background_color_opt_changed = [=] ()
+        {
+            auto color = background_color_opt->as_color();
+            update_background_color(color);
+        };
+
+        auto section = wf::get_core().config->get_section("core");
+        background_color_opt = section->get_option("background_color", "0 0 0 1");
+        background_color_opt->add_updated_handler(&background_color_opt_changed);
+        background_color_opt_changed();
+
         output_damage->schedule_repaint();
+    }
+
+    ~impl()
+    {
+        background_color_opt->rem_updated_handler(&background_color_opt_changed);
     }
 
     /* A stream for each workspace */
@@ -369,6 +391,13 @@ class wf::render_manager::impl
                 default_streams[i][j].ws = {i, j};
             }
         }
+    }
+
+    void update_background_color(wf_color color)
+    {
+        default_color = color;
+
+        output_damage->damage_whole_idle();
     }
 
     render_hook_t renderer;
@@ -864,7 +893,14 @@ class wf::render_manager::impl
         }
 
         check_schedule_surfaces(repaint, stream);
-        clear_empty_areas(repaint, stream.background);
+
+        if (stream.background.a < 0)
+        {
+            clear_empty_areas(repaint, default_color);
+        } else {
+            clear_empty_areas(repaint, stream.background);
+        }
+
         render_views(repaint);
 
         unschedule_drag_icon();
