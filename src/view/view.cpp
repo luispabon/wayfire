@@ -868,6 +868,9 @@ void wf::view_interface_t::damage_box(const wlr_box& box)
 
 void wf::view_interface_t::damage_raw(const wlr_box& box)
 {
+    if (!get_output())
+        return;
+
     auto damage_box = get_output()->render->get_target_framebuffer().
         damage_box_from_geometry_box(box);
 
