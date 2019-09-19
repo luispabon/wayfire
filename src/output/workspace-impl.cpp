@@ -297,8 +297,12 @@ class output_viewport_manager_t
         for (auto& view : wf::reverse(views))
         {
             if (view->is_mapped())
-                output->focus_view(view);
+                output->workspace->bring_to_front(view);
         }
+
+        /* Focus last window */
+        if (!views.empty())
+            output->focus_view(views.back());
     }
 };
 
