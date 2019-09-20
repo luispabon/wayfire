@@ -277,10 +277,10 @@ void wf::view_interface_t::set_tiled(uint32_t edges)
         this->view_impl->last_windowed_geometry = get_wm_geometry();
 
     this->tiled_edges = edges;
-
     if (view_impl->frame)
         view_impl->frame->notify_view_tiled();
 
+    this->emit_signal("tiled", nullptr);
     desktop_state_updated();
 }
 
@@ -298,7 +298,6 @@ void wf::view_interface_t::set_fullscreen(bool full)
     }
 
     fullscreen = full;
-
     if (view_impl->frame)
         view_impl->frame->notify_view_fullscreen();
 
@@ -318,6 +317,7 @@ void wf::view_interface_t::set_fullscreen(bool full)
     if (!fullscreen && get_output() && needs_lowering)
         get_output()->workspace->add_view(self(), wf::LAYER_WORKSPACE);
 
+    this->emit_signal("fullscreen", nullptr);
     desktop_state_updated();
 }
 

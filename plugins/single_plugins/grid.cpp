@@ -104,11 +104,7 @@ class wayfire_grid_view_cdata : public wf::custom_data_t
              * after that we set the snap request. Otherwise the wobbly plugin
              * will think the view actually moved */
             set_end_state(geometry, tiled_edges);
-            snap_wobbly(view, geometry);
-
-            if (tiled_edges <= 0) // release snap, so subsequent size changes don't bother us
-                snap_wobbly(view, geometry, false);
-
+            activate_wobbly(view);
             return destroy();
         }
 
@@ -448,6 +444,7 @@ class wayfire_grid : public wf::plugin_interface_t
         }
 
         data->carried_out = true;
+        log_info("saved geometry is " Prwg, Ewg(data->desired_size));
         ensure_grid_view(data->view)->adjust_target_geometry(
             data->desired_size, -1);
     };

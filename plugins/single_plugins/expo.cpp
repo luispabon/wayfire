@@ -218,7 +218,6 @@ class wayfire_expo : public wf::plugin_interface_t
         auto cws = output->workspace->get_current_workspace();
         auto og = output->get_relative_geometry();
 
-        snap_wobbly(moving_view, {}, false);
         /* Translate coordinates into output-local coordinate system,
          * relative to the current workspace (because that's the coordinate system
          * in which the view sees itself) */

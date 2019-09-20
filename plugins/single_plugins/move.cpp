@@ -64,7 +64,6 @@ class wayfire_move : public wf::plugin_interface_t
     wf_option enable_snap, enable_snap_off, snap_threshold, snap_off_threshold;
     bool is_using_touch;
     bool was_client_request;
-
     bool stuck_in_slot = false;
 
     struct {
@@ -217,8 +216,6 @@ class wayfire_move : public wf::plugin_interface_t
             output->render->set_redraw_always();
 
             start_wobbly(view, grab_start.x, grab_start.y);
-            if (!stuck_in_slot)
-                snap_wobbly(view, view->get_bounding_box());
 
             update_multi_output();
             view->set_moving(true);
@@ -356,7 +353,6 @@ class wayfire_move : public wf::plugin_interface_t
 
             /* view geometry might change after unmaximize/unfullscreen, so update position */
             grabbed_geometry = view->get_wm_geometry();
-            snap_wobbly(view, {}, false);
         }
 
         /* Returns the currently used input coordinates in global compositor space */
@@ -393,8 +389,6 @@ class wayfire_move : public wf::plugin_interface_t
             int dy = old_g.y - new_g.y;
 
             view->move(wm_g.x + dx, wm_g.y + dy);
-            translate_wobbly(view, dx, dy);
-
             view->set_moving(false);
 
             wf::get_core().move_view_to_output(view, new_output);

@@ -224,9 +224,7 @@ class wayfire_resize : public wf::plugin_interface_t
         if (edges & WLR_EDGE_TOP)
             anchor_y += og.height;
 
-        snap_wobbly(view, {}, false);
         start_wobbly(view, anchor_x, anchor_y);
-
         wf::get_core().set_cursor(wlr_xcursor_get_resize_name((wlr_edges)edges));
     }
 
