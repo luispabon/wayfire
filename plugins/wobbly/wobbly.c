@@ -88,6 +88,8 @@ typedef struct _WobblyWindow {
     int          wobbly;
     int	        grabbed;
     int	       velocity;
+    int         grab_dx;
+    int         grab_dy;
     unsigned int  state;
 } WobblyWindow;
 
@@ -166,7 +168,7 @@ static void modelSetMiddleAnchor(Model *model, int x, int y,
     gy = ((GRID_HEIGHT - 1) / 2 * height) / (float) (GRID_HEIGHT - 1);
 
     if (model->anchorObject)
-	model->anchorObject->immobile = 0;
+        model->anchorObject->immobile = 0;
 
     model->anchorObject =
         &model->objects[GRID_WIDTH * ((GRID_HEIGHT-1)/2) + (GRID_WIDTH-1)/ 2];
@@ -591,7 +593,7 @@ void wobbly_add_geometry(struct wobbly_surface *surface)
     }
 }
 
-void wobbly_resize_notify(struct wobbly_surface *surface)
+void wobbly_resize(struct wobbly_surface *surface, int width, int height)
 {
     WobblyWindow *ww = surface->ww;
 
@@ -599,16 +601,22 @@ void wobbly_resize_notify(struct wobbly_surface *surface)
     ww->wobbly |= WobblyInitial;
 
     if (ww->model)
-        modelInitSprings(ww->model, surface->width, surface->height);
+        modelInitSprings(ww->model, width, height);
+
+    ww->grab_dx = (ww->grab_dx * width) / surface->width;
+    ww->grab_dy = (ww->grab_dy * height) / surface->height;
+
+    surface->width = width;
+    surface->height = height;
 }
 
-void wobbly_move_notify(struct wobbly_surface *surface, int dx, int dy)
+void wobbly_move_notify(struct wobbly_surface *surface, int x, int y)
 {
     WobblyWindow *ww = surface->ww;
     if (ww->grabbed)
     {
-        ww->model->anchorObject->position.x += dx;
-        ww->model->anchorObject->position.y += dy;
+        ww->model->anchorObject->position.x = x + ww->grab_dx;
+        ww->model->anchorObject->position.y = y + ww->grab_dy;
 
         ww->wobbly |= WobblyInitial;
         surface->synced = 0;
@@ -620,7 +628,6 @@ void wobbly_slight_wobble(struct wobbly_surface *surface)
     WobblyWindow *ww = surface->ww;
     if (wobblyEnsureModel(surface))
     {
-        printf("slight wobble\n");
         Object *centerObj;
         Spring *s;
         int	   i;
@@ -664,7 +671,6 @@ void wobbly_grab_notify(struct wobbly_surface *surface, int x, int y)
 
     if (wobblyEnsureModel(surface))
     {
-        printf("wobbly grab notify\n");
         Spring *s;
         int	   i;
 
@@ -673,6 +679,8 @@ void wobbly_grab_notify(struct wobbly_surface *surface, int x, int y)
 
         ww->model->anchorObject = modelFindNearestObject(ww->model, x, y);
         ww->model->anchorObject->immobile = 1;
+        ww->grab_dx = ww->model->anchorObject->position.x - x;
+        ww->grab_dy = ww->model->anchorObject->position.y - y;
 
         ww->grabbed = 1;
         for (i = 0; i < ww->model->numSprings; i++)
@@ -785,8 +793,11 @@ void wobbly_unenforce_geometry(struct wobbly_surface *surface)
     {
         if (modelRemoveEdgeAnchors(ww->model))
         {
-            modelSetMiddleAnchor(ww->model, surface->x, surface->y,
+            if (!ww->model->anchorObject || !ww->model->anchorObject->immobile)
+            {
+                modelSetMiddleAnchor(ww->model, surface->x, surface->y,
                     surface->width, surface->height);
+            }
             modelInitSprings(ww->model, surface->width, surface->height);
         }
 

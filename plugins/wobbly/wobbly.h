@@ -37,20 +37,22 @@ struct wobbly_rect
 
 int  wobbly_init(struct wobbly_surface *surface);
 void wobbly_fini(struct wobbly_surface *surface);
-void wobbly_set_top_anchor(struct wobbly_surface *surface, int x, int y, int w, int h);
+void wobbly_set_top_anchor(struct wobbly_surface *surface,
+    int x, int y, int w, int h);
 
 void wobbly_grab_notify(struct wobbly_surface *surface, int x, int y);
 void wobbly_slight_wobble(struct wobbly_surface *surface);
 void wobbly_ungrab_notify(struct wobbly_surface *surface);
 
-void wobbly_resize_notify(struct wobbly_surface *surface);
-void wobbly_move_notify(struct wobbly_surface *surface, int dx, int dy);
+void wobbly_resize(struct wobbly_surface *surface, int width, int height);
+void wobbly_move_notify(struct wobbly_surface *surface, int x, int y);
 void wobbly_prepare_paint(struct wobbly_surface *surface, int msSinceLastPaint);
 void wobbly_done_paint(struct wobbly_surface *surface);
 void wobbly_add_geometry(struct wobbly_surface *surface);
 struct wobbly_rect wobbly_boundingbox(struct wobbly_surface *surface);
 
-void wobbly_force_geometry(struct wobbly_surface *surface, int x, int y, int w, int h);
+void wobbly_force_geometry(struct wobbly_surface *surface,
+    int x, int y, int w, int h);
 void wobbly_unenforce_geometry(struct wobbly_surface *surface);
 
 void wobbly_translate(struct wobbly_surface *surface, int dx, int dy);

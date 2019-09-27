@@ -269,16 +269,6 @@ class iwobbly_state_t
     const wobbly_model_t& model;
     wf_geometry wm_geometry;
     wf_geometry bounding_box;
-
-    /**
-     * Resize the model to the given size, position does not change
-     */
-    virtual void resize_model(int width, int height)
-    {
-        model->width = width;
-        model->height = height;
-        wobbly_resize_notify(model.get());
-    }
 };
 
 /**
@@ -320,11 +310,6 @@ class wobbly_state_grabbed_t : public iwobbly_state_t
         this->last_grab.y += dy;
     }
 
-    void handle_wm_geometry(const wf_geometry& old_wm) override
-    {
-        /* TODO: adjust anchor/position around grab */
-    }
-
     void handle_frame() override
     {
         auto old_bbox = bounding_box;
@@ -334,7 +319,7 @@ class wobbly_state_grabbed_t : public iwobbly_state_t
         {
             /* Directly accept new size, but keep position,
              * because it is managed by the grab. */
-            resize_model(bounding_box.width, bounding_box.height);
+            wobbly_resize(model.get(), bounding_box.width, bounding_box.height);
         }
     }
 
@@ -342,8 +327,7 @@ class wobbly_state_grabbed_t : public iwobbly_state_t
     wf_point last_grab;
     void handle_grab_move(wf_point grab) override
     {
-        wobbly_move_notify(model.get(),
-            grab.x - last_grab.x, grab.y - last_grab.y);
+        wobbly_move_notify(model.get(), grab.x, grab.y);
         this->last_grab = {(int)grab.x, (int)grab.y};
     }
 
@@ -445,12 +429,10 @@ class wobbly_state_floating_t : public iwobbly_state_t
         if (target_x != wm.x || target_y != wm.y)
             view->move(model->x + wm.x - new_bbox.x, model->y + wm.y - new_bbox.y);
 
-        log_info("geometry changed from " Prwg " to " Prwg, Ewg(bounding_box), Ewg(new_bbox));
-
         if (new_bbox.width != this->bounding_box.width ||
             new_bbox.height != this->bounding_box.height)
         {
-            resize_model(new_bbox.width, new_bbox.height);
+            wobbly_resize(model.get(), new_bbox.width, new_bbox.height);
         }
 
         this->bounding_box = new_bbox;
@@ -489,7 +471,7 @@ class wobbly_state_free_t : public iwobbly_state_t
         {
             wobbly_set_top_anchor(model.get(), bounding_box.x, bounding_box.y,
                 bounding_box.width, bounding_box.height);
-            resize_model(bounding_box.width, bounding_box.height);
+            wobbly_resize(model.get(), bounding_box.width, bounding_box.height);
         }
     }
 
@@ -669,8 +651,6 @@ class wf_wobbly : public wf_view_transformer_t
             state->get_wobbly_state() == wf::WOBBLY_STATE_TILED_GRABBED);
         bool grabbed = (start_grab || was_grabbed) && !end_grab;
 
-        //log_info("view state changed %d %d %d", tiled, was_grabbed, grabbed);
-
         uint32_t next_state_mask = 0;
         if (tiled && grabbed) {
             next_state_mask = wf::WOBBLY_STATE_TILED_GRABBED;
@@ -729,11 +709,8 @@ class wf_wobbly : public wf_view_transformer_t
             if (was_grabbed)
                 grab = this->state->get_grab_position();
 
-            log_info("start a grab %d %d %d,%d", was_grabbed, grabbed, grab.x, grab.y);
             next_state->handle_grab_start(grab, was_grabbed);
         }
-
-        log_info("set state to %d", next_state_mask);
 
         /* New state has been set up */
         this->state = std::move(next_state);
@@ -751,21 +728,17 @@ class wf_wobbly : public wf_view_transformer_t
 
     void end_grab()
     {
-        //log_info("end wobbly");
-        //wf_print_trace();
         update_wobbly_state(false, {0, 0}, true);
     }
 
     void wobble()
     {
-        //log_info("wobble");
         wobbly_slight_wobble(model.get());
         model->synced = 0;
     }
 
     void destroy_self()
     {
-        //wf_print_trace();
         view->pop_transformer("wobbly");
     }
 

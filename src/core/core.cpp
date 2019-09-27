@@ -393,7 +393,6 @@ void wf::compositor_core_impl_t::set_active_view(wayfire_view new_focus)
         new_focus = nullptr;
 
     bool refocus = (input->keyboard_focus == new_focus);
-    log_debug("set active view to %s", new_focus ? new_focus->get_title().c_str() : "nil");
 
     /* don't deactivate view if the next focus is not a toplevel */
     if (new_focus == nullptr || new_focus->role == VIEW_ROLE_TOPLEVEL)
