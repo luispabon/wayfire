@@ -34,6 +34,7 @@ class move_snap_helper_t : public wf::custom_data_t
     {
         this->view = view;
         this->grab = grab;
+        this->last_grabbing_position = grab;
 
         /* TODO: figure out where to put these options */
         auto section = wf::get_core().config->get_section("move");
@@ -47,12 +48,14 @@ class move_snap_helper_t : public wf::custom_data_t
         px = 1.0 * (grab.x - wmg.x) / wmg.width;
         py = 1.0 * (grab.y - wmg.y) / wmg.height;
         view->set_moving(1);
+        view->connect_signal("geometry-changed", &view_geometry_changed);
     }
 
     virtual ~move_snap_helper_t()
     {
-        if (view)
-            view->set_moving(false);
+        view->set_moving(false);
+        view->disconnect_signal("geometry-changed", &view_geometry_changed);
+        this->view = nullptr;
     }
 
     /**
@@ -76,11 +79,8 @@ class move_snap_helper_t : public wf::custom_data_t
         if (view_in_slot)
             return;
 
-        auto wmg = view->get_wm_geometry();
-        wf_pointf target_position = {to.x - px * wmg.width,
-            to.y - py * wmg.height};
-
-        view->move(target_position.x, target_position.y);
+        this->last_grabbing_position = to;
+        adjust_around_grab();
     }
 
     /**
@@ -89,15 +89,6 @@ class move_snap_helper_t : public wf::custom_data_t
     virtual void handle_input_released()
     {
         end_wobbly(view);
-    }
-
-    /**
-     * The view was destroyed.
-     * After calling this, the caller can only destroy the object.
-     */
-    virtual void handle_view_destroyed()
-    {
-        this->view = nullptr;
     }
 
     /** @return Whether the view is freely moving or stays at the same place */
@@ -123,5 +114,25 @@ class move_snap_helper_t : public wf::custom_data_t
         if (view->tiled_edges)
             view->tile_request(0);
     }
+
+    wf_point last_grabbing_position;
+    /** Adjust the view position so that it stays around the grabbing point */
+    virtual void adjust_around_grab()
+    {
+        auto wmg = view->get_wm_geometry();
+        wf_point target_position = {
+            int(last_grabbing_position.x - px * wmg.width),
+            int(last_grabbing_position.y - py * wmg.height),
+        };
+
+        view->disconnect_signal("geometry-changed", &view_geometry_changed);
+        view->move(target_position.x, target_position.y);
+        view->connect_signal("geometry-changed", &view_geometry_changed);
+    }
+
+    signal_callback_t view_geometry_changed = [=] (signal_data_t *)
+    {
+        adjust_around_grab();
+    };
 };
 }

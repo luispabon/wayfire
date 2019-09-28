@@ -315,27 +315,6 @@ class wayfire_grid : public wf::plugin_interface_t
             get_tiled_edges_for_slot(slot));
     }
 
-    /* calculates the target geometry so that it is centered around the pointer */
-    wf_geometry calculate_restored_geometry(wf_geometry base_restored)
-    {
-        auto oc = output->get_cursor_position();
-        base_restored.x = oc.x - base_restored.width / 2;
-        base_restored.y = oc.y - base_restored.height / 2;
-
-        /* if the view goes outside of the workarea, try to move it back inside */
-        auto wa = output->workspace->get_workarea();
-        if (base_restored.x + base_restored.width > wa.x + wa.width)
-            base_restored.x = wa.x + wa.width - base_restored.width;
-        if (base_restored.y + base_restored.height > wa.y + wa.width)
-            base_restored.y = wa.y + wa.height - base_restored.width;
-        if (base_restored.x < wa.x)
-            base_restored.x = wa.x;
-        if (base_restored.y < wa.y)
-            base_restored.y = wa.y;
-
-        return base_restored;
-    }
-
     /*
      * 7 8 9
      * 4 5 6
@@ -422,11 +401,6 @@ class wayfire_grid : public wf::plugin_interface_t
         if (slot > 0)
             data->desired_size = get_slot_dimensions(slot);
 
-        /** XXX: If move is active, we want the restored geometry to be centered
-         * around the cursor and visible on the screen */
-        if (output->is_plugin_active("move") && !data->edges)
-            data->desired_size = calculate_restored_geometry(data->desired_size);
-
         data->view->get_data_safe<wf_grid_slot_data>()->slot = slot;
         ensure_grid_view(data->view)->adjust_target_geometry(data->desired_size,
             get_tiled_edges_for_slot(slot));
@@ -444,7 +418,6 @@ class wayfire_grid : public wf::plugin_interface_t
         }
 
         data->carried_out = true;
-        log_info("saved geometry is " Prwg, Ewg(data->desired_size));
         ensure_grid_view(data->view)->adjust_target_geometry(
             data->desired_size, -1);
     };

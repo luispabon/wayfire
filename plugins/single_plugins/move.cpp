@@ -224,7 +224,6 @@ class wayfire_move : public wf::plugin_interface_t
              * we don't have to do anything more */
             if (view_destroyed)
             {
-                MOVE_HELPER->handle_view_destroyed();
                 view->erase_data<wf::move_snap_helper_t>();
                 this->view = nullptr;
                 return;
