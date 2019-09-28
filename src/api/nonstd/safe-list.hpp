@@ -172,24 +172,23 @@ namespace wf
         /* Call func for each non-erased element of the list */
         void for_each(std::function<void(T&)> func) const
         {
-            for (auto& el : list)
+            /* Go through all elements currently in the list */
+            auto it = list.begin();
+            for (int size = list.size(); size > 0; size--, it++)
             {
-                /* The for-each loop here is safe, because no elements will be
-                 * erased util the event loop goes idle */
-                if (el)
-                    func(*el);
+                if (*it)
+                    func(**it);
             }
         }
 
         /* Call func for each non-erased element of the list in reversed order */
         void for_each_reverse(std::function<void(T&)> func) const
         {
-            for (auto& el : wf::reverse(list))
+            auto it = list.rbegin();
+            for (int size = list.size(); size > 0; size--, it++)
             {
-                /* The loop here is safe, because no elements will be erased
-                 * util the event loop goes idle */
-                if (el)
-                    func(*el);
+                if (*it)
+                    func(**it);
             }
         }
 
