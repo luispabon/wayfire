@@ -2,6 +2,7 @@
 #include <debug.hpp>
 #include <core.hpp>
 #include <ctime>
+#include <cmath>
 
 extern "C"
 {
@@ -57,6 +58,11 @@ wf_geometry operator + (const wf_geometry &a, const wf_point& b)
 wf_point operator - (const wf_point& a)
 {
     return {-a.x, -a.y};
+}
+
+double abs(const wf_point& p)
+{
+    return std::sqrt(p.x * p.x + p.y * p.y);
 }
 
 bool operator & (const wf_geometry& rect, const wf_point& point)

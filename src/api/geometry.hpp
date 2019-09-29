@@ -44,6 +44,9 @@ wf_point    operator + (const wf_point& a, const wf_geometry& b);
 wf_geometry operator + (const wf_geometry &a, const wf_point& b);
 wf_point    operator - (const wf_point& a);
 
+/* @return The length of the given vector */
+double abs(const wf_point &p);
+
 /* Returns true if point is inside rect */
 bool operator & (const wf_geometry& rect, const wf_point& point);
 /* Returns true if point is inside rect */
