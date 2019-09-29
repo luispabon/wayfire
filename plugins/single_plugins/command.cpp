@@ -3,6 +3,7 @@
 #include <core.hpp>
 #include <linux/input.h>
 #include <linux/input-event-codes.h>
+#include <signal-definitions.hpp>
 
 static bool begins_with(std::string word, std::string prefix)
 {
@@ -77,10 +78,6 @@ class wayfire_command : public wf::plugin_interface_t
             return;
         }
 
-        /* Grab if grab wasn't active up to now */
-        if (!grab_interface->is_grabbed())
-            grab_interface->grab();
-
         repeat.repeat_command = command;
         if (source == ACTIVATOR_SOURCE_KEYBINDING) {
             repeat.pressed_key = value;
@@ -94,6 +91,9 @@ class wayfire_command : public wf::plugin_interface_t
         wl_event_source_timer_update(repeat_delay_source,
             wf::get_core().config->get_section("input")
                 ->get_option("kb_repeat_delay", "400")->as_int());
+
+        wf::get_core().connect_signal("pointer_button", &on_button_event);
+        wf::get_core().connect_signal("keyboard_key", &on_key_event);
     }
 
     std::function<void()> on_repeat_delay_timeout = [=] ()
@@ -130,23 +130,32 @@ class wayfire_command : public wf::plugin_interface_t
         }
 
         repeat.pressed_key = repeat.pressed_button = 0;
-
-        grab_interface->ungrab();
         output->deactivate_plugin(grab_interface);
+
+        wf::get_core().disconnect_signal("pointer_button", &on_button_event);
+        wf::get_core().disconnect_signal("keyboard_key", &on_key_event);
     }
 
-    std::function<void(uint32_t, uint32_t)> on_button =
-        [=] (uint32_t button, uint32_t state)
+    wf::signal_callback_t on_button_event = [=] (wf::signal_data_t *data)
     {
-        if (button == repeat.pressed_button && state == WLR_BUTTON_RELEASED)
+        auto ev = static_cast<
+            wf::input_event_signal<wlr_event_pointer_button>*>(data);
+        if (ev->event->button == repeat.pressed_button &&
+            ev->event->state == WLR_BUTTON_RELEASED)
+        {
             reset_repeat();
+        }
     };
 
-    std::function<void(uint32_t, uint32_t)> on_key =
-        [=] (uint32_t key, uint32_t state)
+    wf::signal_callback_t on_key_event = [=] (wf::signal_data_t *data)
     {
-        if (key == repeat.pressed_key && state == WLR_KEY_RELEASED)
+        auto ev = static_cast<
+            wf::input_event_signal<wlr_event_keyboard_key>*>(data);
+        if (ev->event->keycode == repeat.pressed_key &&
+            ev->event->state == WLR_KEY_RELEASED)
+        {
             reset_repeat();
+        }
     };
 
     public:
@@ -218,9 +227,6 @@ class wayfire_command : public wf::plugin_interface_t
     {
         grab_interface->name = "command";
         grab_interface->capabilities = wf::CAPABILITY_GRAB_INPUT;
-        grab_interface->callbacks.pointer.button = on_button;
-        grab_interface->callbacks.keyboard.key = on_key;
-        grab_interface->callbacks.cancel = [=]() {reset_repeat();};
 
         using namespace std::placeholders;
 
