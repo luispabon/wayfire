@@ -124,6 +124,7 @@ void input_manager::set_keyboard_focus(wayfire_view view, wlr_seat *seat)
     else
     {
         wlr_seat_keyboard_notify_enter(seat, NULL, NULL, 0, NULL);
+        keyboard_focus = nullptr;
     }
 }
 
