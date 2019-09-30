@@ -9,6 +9,7 @@
 #include "../output/output-impl.hpp"
 #include <xf86drmMode.h>
 #include <sstream>
+#include <cstring>
 #include <unordered_set>
 
 extern "C"
@@ -107,6 +108,7 @@ static bool parse_modeline(const char *modeline, drmModeModeInfo &mode)
     char vsync[16];
     float fclock;
 
+    std::memset(&mode, 0, sizeof(mode));
     mode.type = DRM_MODE_TYPE_USERDEF;
 
     if (sscanf(modeline, "%f %hd %hd %hd %hd %hd %hd %hd %hd %15s %15s",
