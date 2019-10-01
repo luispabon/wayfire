@@ -63,6 +63,7 @@ class vswipe : public wf::plugin_interface_t
         wf_option delta_threshold;
         wf_option speed_factor;
         wf_option speed_cap;
+        wf_option smooth_transition;
 
     public:
 
@@ -79,6 +80,7 @@ class vswipe : public wf::plugin_interface_t
 
         enable_horizontal = section->get_option("enable_horizontal", "1");
         enable_vertical = section->get_option("enable_vertical", "1");
+        smooth_transition = section->get_option("enable_smooth_transition", "0");
         fingers = section->get_option("fingers", "4");
         gap = section->get_option("gap", "32");
         threshold = section->get_option("threshold", "0.35");
@@ -303,8 +305,10 @@ class vswipe : public wf::plugin_interface_t
             state.delta_last = ev->dy;
         }
 
-        delta_smooth.start(delta_smooth.progress(),
-            delta_smooth.end_value + current_delta_processed);
+        double new_delta_end = delta_smooth.end_value + current_delta_processed;
+        double new_delta_start = smooth_transition->as_int() ?
+            delta_smooth.progress() : new_delta_end;
+        delta_smooth.start(new_delta_start, new_delta_end);;
         output->render->damage_whole();
     };
 
