@@ -16,6 +16,10 @@ meson build --prefix=/usr --buildtype=release
 ninja -C build && sudo ninja -C build install
 ```
 
+# Packaging status
+
+- [Fedora](https://apps.fedoraproject.org/packages/wayfire) (31+): `sudo dnf install wayfire`
+
 **Before running Wayfire, copy the default configuration file which is located in the root of the repository and place it in:**
 ```
 cp wayfire.ini.default ~/.config/wayfire.ini
