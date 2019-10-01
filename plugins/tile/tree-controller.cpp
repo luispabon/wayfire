@@ -406,8 +406,8 @@ void move_view_controller_t::input_released()
             new_split->add_child(std::move(dropped_view));
         } else
         {
-            new_split->add_child(std::move(dragged_view));
             new_split->add_child(std::move(dropped_view));
+            new_split->add_child(std::move(dragged_view));
         }
 
         /* Put them in place */
