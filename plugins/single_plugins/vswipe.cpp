@@ -138,6 +138,10 @@ class vswipe : public wf::plugin_interface_t
         };
 
         auto swipe = get_translation(delta_smooth.progress() * 2);
+        /* Undo rotation of the workspace */
+        auto workspace_transform = glm::inverse(fb.transform);
+        swipe = swipe * workspace_transform;
+
         if (streams.prev.ws.x >= 0)
         {
             auto prev = get_translation(-2.0 - state.gap * 2.0);
