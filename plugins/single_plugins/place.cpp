@@ -14,7 +14,9 @@ class wayfire_place_window : public wf::plugin_interface_t
     public:
     void init(wayfire_config *config)
     {
-        cascade_x = cascade_y = 0;
+        auto workarea = output->workspace->get_workarea();
+        cascade_x = workarea.x;
+        cascade_y = workarea.y;
 
         created_cb = [=] (wf::signal_data_t *data)
         {
