@@ -372,9 +372,10 @@ class wayfire_move : public wf::plugin_interface_t
             int dx = old_g.x - new_g.x;
             int dy = old_g.y - new_g.y;
 
+            /* First erase the move snap helper, so that we can set the
+             * correct position on the other output. */
+            view->erase_data<wf::move_snap_helper_t> ();
             view->move(wm_g.x + dx, wm_g.y + dy);
-            view->set_moving(false);
-
             wf::get_core().move_view_to_output(view, new_output);
             wf::get_core().focus_output(new_output);
 
