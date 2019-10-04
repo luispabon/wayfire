@@ -103,6 +103,11 @@ void wf_blur_base::damage_all_workspaces()
 void wf_blur_base::render_iteration(wf_framebuffer_base& in,
     wf_framebuffer_base& out, int width, int height)
 {
+    /* Special case for small regions where we can't really blur, because we
+     * simply have too few pixels */
+    width = std::max(width, 1);
+    height = std::max(height, 1);
+
     out.allocate(width, height);
     out.bind();
 
