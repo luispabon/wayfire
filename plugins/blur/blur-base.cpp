@@ -121,8 +121,8 @@ wlr_box wf_blur_base::copy_region(wf_framebuffer_base& result,
     auto subbox = source.framebuffer_box_from_damage_box(
         wlr_box_from_pixman_box(region.get_extents()));
 
-    auto source_box = source.framebuffer_box_from_geometry_box(
-        source.geometry);
+    auto source_box = source.framebuffer_box_from_geometry_box({
+        0, 0, source.geometry.width, source.geometry.height});
 
     /* Scaling down might cause issues like flickering or some discrepancies
      * between the source and final image.

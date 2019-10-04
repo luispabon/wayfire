@@ -106,6 +106,9 @@ class wf_kawase_blur : public wf_blur_base
         GL_CALL(glUseProgram(program[0]));
         GL_CALL(glVertexAttribPointer(posID[0], 2, GL_FLOAT, GL_FALSE, 0, vertexData));
         GL_CALL(glEnableVertexAttribArray(posID[0]));
+        /* Disable blending, because we may have transparent background, which
+         * we want to render on uncleared framebuffer */
+        GL_CALL(glDisable(GL_BLEND));
 
         GL_CALL(glUniform1f(offsetID[0], offset));
 
@@ -116,7 +119,7 @@ class wf_kawase_blur : public wf_blur_base
             GL_CALL(glUniform2f(halfpixelID[0], 0.5f / sampleWidth, 0.5f / sampleHeight));
             render_iteration(fb[i % 2], fb[1 - i % 2], sampleWidth, sampleHeight);
         }
-    
+
         GL_CALL(glDisableVertexAttribArray(posID[0]));
 
         /* Upsample */
