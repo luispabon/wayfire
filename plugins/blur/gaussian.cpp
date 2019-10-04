@@ -50,7 +50,7 @@ void main()
     bp += texture2D(bg_texture, vec2(blurcoord[6].x, uv.y)) * 0.0540540541;
     bp += texture2D(bg_texture, vec2(blurcoord[7].x, uv.y)) * 0.0162162162;
     bp += texture2D(bg_texture, vec2(blurcoord[8].x, uv.y)) * 0.0162162162;
-    gl_FragColor = vec4(bp.rgb, 1.0);
+    gl_FragColor = bp;
 })";
 
 static const char* gaussian_fragment_shader_vert =
@@ -76,7 +76,7 @@ void main()
     bp += texture2D(bg_texture, vec2(uv.x, blurcoord[6].y)) * 0.0540540541;
     bp += texture2D(bg_texture, vec2(uv.x, blurcoord[7].y)) * 0.0162162162;
     bp += texture2D(bg_texture, vec2(uv.x, blurcoord[8].y)) * 0.0162162162;
-    gl_FragColor = vec4(bp.rgb, 1.0);
+    gl_FragColor = bp;
 })";
 
 static const wf_blur_default_option_values gaussian_defaults = {

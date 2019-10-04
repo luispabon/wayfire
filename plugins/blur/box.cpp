@@ -45,7 +45,8 @@ void main()
         vec2 uv = vec2(blurcoord[i].x, uv.y);
         bp += texture2D(bg_texture, uv);
     }
-    gl_FragColor = vec4(bp.rgb / 9.0, 1.0);
+
+    gl_FragColor = bp / 9.0;
 }
 )";
 
@@ -67,7 +68,7 @@ void main()
         vec2 uv = vec2(uv.x, blurcoord[i].y);
         bp += texture2D(bg_texture, uv);
     }
-    gl_FragColor = vec4(bp.rgb / 9.0, 1.0);
+    gl_FragColor = bp / 9.0;
 }
 )";
 
