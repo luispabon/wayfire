@@ -206,13 +206,6 @@ next_output_with_win = <super> <shift> KEY_T
 [resize]
 activate = <super> BTN_RIGHT
 
-# rotate the screen
-[rotator]
-rotate_down = <ctrl> <alt> <shift> KEY_DOWN
-rotate_left = <ctrl> <alt> <shift> KEY_LEFT
-rotate_right = <ctrl> <alt> <shift> KEY_RIGHT
-rotate_up = <ctrl> <alt> <shift> KEY_UP
-
 # change active window with an animation
 [switcher]
 next_view = <alt> KEY_TAB
