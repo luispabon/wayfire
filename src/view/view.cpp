@@ -482,6 +482,18 @@ bool wf::view_interface_t::should_be_decorated()
 
 void wf::view_interface_t::set_decoration(surface_interface_t *frame)
 {
+    if (!frame)
+    {
+        damage();
+        if (view_impl->decoration)
+            view_impl->decoration->unref();
+        view_impl->decoration = nullptr;
+        view_impl->frame = nullptr;
+        emit_signal("decoration-changed", nullptr);
+
+        return;
+    }
+
     assert(frame->priv->parent_surface == this);
 
     // Take wm geometry as it was before adding the frame */
