@@ -302,7 +302,7 @@ class output_viewport_manager_t
 
         /* Focus last window */
         if (!views.empty())
-            output->focus_view(views.back());
+            output->focus_view(views.front());
     }
 };
 
