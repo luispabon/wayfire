@@ -71,6 +71,7 @@ class wayfire_xwayland_view_base : public wf::wlr_view_t
 
     virtual void destroy() override
     {
+        this->xw = nullptr;
         if (get_output())
         {
             get_output()->disconnect_signal(
@@ -113,6 +114,7 @@ class wayfire_xwayland_view_base : public wf::wlr_view_t
         }
 
         set_geometry(configure_geometry);
+        send_configure(configure_geometry.width, configure_geometry.height);
     }
 
     virtual void close() override
@@ -123,7 +125,7 @@ class wayfire_xwayland_view_base : public wf::wlr_view_t
 
     void send_configure(int width, int height)
     {
-        if (!is_mapped())
+        if (!xw) // can happen after xsurface is destroyed
             return;
 
         if (width < 0 || height < 0)
