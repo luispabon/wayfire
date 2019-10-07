@@ -207,7 +207,7 @@ class tile_plugin_t : public wf::plugin_interface_t
         /* View node is invalid now */
         flatten_roots();
 
-        if (wview->fullscreen)
+        if (wview->fullscreen && wview->is_mapped())
             wview->fullscreen_request(nullptr, false);
     }
 
