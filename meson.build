@@ -13,7 +13,7 @@ project(
 	],
 )
 
-so_version = ['0', '2', '0']
+so_version = ['0', '3', '0']
 wayfire_api_inc  = include_directories('src/api')
 
 wayland_server = dependency('wayland-server')
@@ -30,7 +30,7 @@ pixman         = dependency('pixman-1')
 threads        = dependency('threads')
 xkbcommon      = dependency('xkbcommon')
 wlroots        = dependency('wlroots', version: '0.8.0', fallback: ['wlroots', 'wlroots'])
-wfconfig       = dependency('wf-config', fallback: ['wf-config', 'wfconfig'])
+wfconfig       = dependency('wf-config', version: '>=0.3', fallback: ['wf-config', 'wfconfig'])
 
 needs_libinotify = ['freebsd', 'dragonfly'].contains(host_machine.system())
 libinotify       = dependency('libinotify', required: needs_libinotify)
