@@ -114,7 +114,7 @@ grid_resolution = 7
 output = eDP-1
 
 # provide animations when a window is opened or closed
-# currently, only zoom and fade is supported
+# currently, only zoom, fade and fire animations are supported
 [animate]
 duration = 540.000000
 startup_duration = 1000
@@ -156,7 +156,6 @@ skydome_texture = /home/ilex/Desktop/col.png
 mirror = 0
 # for cubemap background mode
 cubemap_image = /home/ilex/Desktop/col.png
-deform = 0
 
 
 
