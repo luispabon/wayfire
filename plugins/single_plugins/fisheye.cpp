@@ -25,7 +25,6 @@
 #include <plugin.hpp>
 #include <output.hpp>
 #include <opengl.hpp>
-#include <debug.hpp>
 #include <animation.hpp>
 #include <render-manager.hpp>
 
@@ -137,7 +136,7 @@ class wayfire_fisheye : public wf::plugin_interface_t
                 render(source, dest);
             };
 
-            active = false;
+            hook_set = active = false;
             toggle_cb = [=] (wf_activator_source, uint32_t)
             {
                     if (active)
