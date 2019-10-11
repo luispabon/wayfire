@@ -98,7 +98,8 @@ struct wf_pointer_constraint
 
         // set correct constraint
         auto& lpointer = wf::get_core_impl().input->lpointer;
-        if (lpointer->get_focus()->priv->wsurface == constraint->surface)
+        auto focus = lpointer->get_focus();
+        if (focus && focus->priv->wsurface == constraint->surface)
             lpointer->set_pointer_constraint(constraint);
     }
 };
