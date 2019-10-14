@@ -186,6 +186,20 @@ bool wf_region::contains_point(const wf_point& point) const
         point.x, point.y, NULL);
 }
 
+bool wf_region::contains_pointf(const wf_pointf& point) const
+{
+    for (auto& box : *this)
+    {
+        if (box.x1 <= point.x && point.x < box.x2)
+        {
+            if (box.y1 <= point.y && point.y < box.y2)
+                return true;
+        }
+    }
+
+    return false;
+}
+
 /* Translate the region */
 wf_region wf_region::operator + (const wf_point& vector) const
 {

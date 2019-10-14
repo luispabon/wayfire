@@ -188,7 +188,7 @@ static double distance_between_points(const wf_pointf& a, const wf_pointf& b)
 static wf_pointf region_closest_point(const wf_region& region,
     const wf_pointf& ref)
 {
-    if (region.empty() || region.contains_point({(int)ref.x, (int)ref.y}))
+    if (region.empty() || region.contains_pointf(ref))
         return ref;
 
     auto extents = region.get_extents();
@@ -432,7 +432,7 @@ void wf::LogicalPointer::handle_pointer_motion_absolute(
     if (this->active_pointer_constraint && this->cursor_focus)
     {
         auto local = get_surface_relative_coords(this->cursor_focus, {cx, cy});
-        if (!constraint_region.contains_point({(int)local.x, (int)local.y}))
+        if (!constraint_region.contains_pointf(local))
             return;
     }
 
