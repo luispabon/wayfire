@@ -72,7 +72,7 @@ void wf::view_interface_t::set_toplevel_parent(wayfire_view new_parent)
 
         /* Add in the list of the new parent */
         if (new_parent)
-            new_parent->children.push_back(self());
+            new_parent->children.insert(new_parent->children.begin(), self());
 
         parent = new_parent;
     }

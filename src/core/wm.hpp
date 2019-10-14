@@ -41,13 +41,9 @@ class wayfire_exit : public wf::plugin_interface_t {
 };
 
 class wayfire_handle_focus_parent : public wf::plugin_interface_t {
-    wf::signal_callback_t focus_event;
-
-    void focus_view(wayfire_view view);
-    wayfire_view last_view = nullptr;
-    bool intercept_recursion = false;
-
-    public:
+    wf::signal_callback_t focus_event, pending_focus_unmap;
+    wf::wl_idle_call idle_focus;
+  public:
     void init(wayfire_config *config) override;
     void fini() override;
 };

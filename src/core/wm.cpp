@@ -161,40 +161,66 @@ void wayfire_focus::fini()
     set_last_focus(nullptr);
 }
 
-void wayfire_handle_focus_parent::focus_view(wayfire_view view)
+
+/* Enumerate view's in @root's view tree, from top to bottom */
+static std::vector<wayfire_view> enumerate_views(wayfire_view root)
 {
-    last_view = view;
-    for (auto child : view->children)
+    if (!root->is_mapped())
+        return {};
+
+    std::vector<wayfire_view> views;
+    for (auto& child : root->children)
     {
-        output->workspace->restack_above(child, view);
-        focus_view(child);
+        auto child_views = enumerate_views(child);
+        views.insert(views.end(), child_views.begin(), child_views.end());
     }
+
+    views.push_back(root);
+    return views;
 }
 
 void wayfire_handle_focus_parent::init(wayfire_config*)
 {
-    focus_event = [&] (wf::signal_data_t *data)
+    focus_event = [&] (wf::signal_data_t *data) mutable
     {
         auto view = get_signaled_view(data);
-        if (!view || intercept_recursion)
+        if (!view)
             return;
 
-        auto to_focus = view;
-        while(to_focus->parent)
-            to_focus = to_focus->parent;
+        auto root = view;
+        while(root->parent)
+            root = root->parent;
 
-        focus_view(to_focus);
+        auto views = enumerate_views(root);
+        /* Already focused the view, no need to restack */
+        if (views.front() == view)
+            return;
 
-        /* because output->focus_view() will fire focus-view signal again,
-         * we use this flag to know that this is happening and don't fall
-         * into the depths of the infinite recursion */
-        intercept_recursion = true;
-        output->focus_view(last_view);
-        intercept_recursion = false;
+        log_info("frontmost is %s want %s", views.front()->get_title().c_str(), view->get_title().c_str());
 
-        /* free shared_ptr reference */
-        last_view.reset();
+        /* Delay focus a bit because we do not want to mess with other output
+         * focus handlers. However, we need to be careful, because the view
+         * might get unmapped while waiting. */
+        pending_focus_unmap = [=] (wf::signal_data_t*) {
+            this->idle_focus.disconnect();
+            view->disconnect_signal("unmap", &pending_focus_unmap);
+        };
+        view->connect_signal("unmap", &pending_focus_unmap);
+
+        idle_focus.run_once([view, this] () {
+            auto views = enumerate_views(view);
+            for (auto& child : views)
+                output->workspace->restack_above(child, view);
+
+            /* Prevent getting called again */
+            output->disconnect_signal("focus-view", &focus_event);
+            output->focus_view(views.front());
+            output->connect_signal("focus-view", &focus_event);
+
+            view->disconnect_signal("unmap", &pending_focus_unmap);
+        });
     };
+
     output->connect_signal("focus-view", &focus_event);
 }
 
