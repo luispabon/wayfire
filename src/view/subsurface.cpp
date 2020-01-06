@@ -22,7 +22,7 @@ wf::subsurface_implementation_t::subsurface_implementation_t(wlr_subsurface *_su
     on_destroy.connect(&sub->events.destroy);
 }
 
-wf_point wf::subsurface_implementation_t::get_offset()
+wf::point_t wf::subsurface_implementation_t::get_offset()
 {
     assert(is_mapped());
 

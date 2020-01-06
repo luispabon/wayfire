@@ -3,4 +3,4 @@ decoration = shared_module('decoration',
                           include_directories: [wayfire_api_inc, wayfire_conf_inc],
                           dependencies: [wlroots, pixman, wf_protos, wfconfig, cairo],
                           install: true,
-                          install_dir: 'lib/wayfire/')
+                          install_dir: join_paths(get_option('libdir'), 'wayfire'))

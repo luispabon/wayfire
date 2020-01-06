@@ -13,8 +13,8 @@ extern "C"
 #include "cursor.hpp"
 #include "touch.hpp"
 #include "input-manager.hpp"
-#include "compositor-view.hpp"
-#include "signal-definitions.hpp"
+#include "wayfire/compositor-view.hpp"
+#include "wayfire/signal-definitions.hpp"
 
 void wf_keyboard::setup_listeners()
 {
@@ -49,19 +49,17 @@ void wf_keyboard::setup_listeners()
     on_modifier.connect(&handle->events.modifiers);
 }
 
-wf_keyboard::wf_keyboard(wlr_input_device *dev, wayfire_config *config)
+wf_keyboard::wf_keyboard(wlr_input_device *dev)
     : handle(dev->keyboard), device(dev)
 {
-    auto section = config->get_section("input");
+    model.load_option("input/xkb_model");
+    variant.load_option("input/xkb_variant");
+    layout.load_option("input/xkb_layout");
+    options.load_option("input/xkb_option");
+    rules.load_option("input/xkb_rule");
 
-    model   = section->get_option("xkb_model", "");
-    variant = section->get_option("xkb_variant", "");
-    layout  = section->get_option("xkb_layout", "");
-    options = section->get_option("xkb_option", "");
-    rules   = section->get_option("xkb_rule", "");
-
-    repeat_rate  = section->get_option("kb_repeat_rate", "40");
-    repeat_delay = section->get_option("kb_repeat_delay", "400");
+    repeat_rate.load_option("input/kb_repeat_rate");
+    repeat_delay.load_option("input/kb_repeat_delay");
 
     setup_listeners();
     reload_input_options();
@@ -72,11 +70,13 @@ void wf_keyboard::reload_input_options()
 {
     auto ctx = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
 
-    auto rules = this->rules->as_string();
-    auto model = this->model->as_string();
-    auto layout = this->layout->as_string();
-    auto variant = this->variant->as_string();
-    auto options = this->options->as_string();
+    /* Copy memory to stack, so that .c_str() is valid */
+    std::string rules   = this->rules;
+    std::string model   = this->model;
+    std::string layout  = this->layout;
+    std::string variant = this->variant;
+    std::string options = this->options;
+
 
     xkb_rule_names names;
     names.rules   = rules.c_str();
@@ -84,16 +84,14 @@ void wf_keyboard::reload_input_options()
     names.layout  = layout.c_str();
     names.variant = variant.c_str();
     names.options = options.c_str();
-
-    auto keymap = xkb_map_new_from_names(ctx, &names, XKB_KEYMAP_COMPILE_NO_FLAGS);
+    auto keymap = xkb_map_new_from_names(ctx, &names,
+        XKB_KEYMAP_COMPILE_NO_FLAGS);
 
     wlr_keyboard_set_keymap(handle, keymap);
-
     xkb_keymap_unref(keymap);
     xkb_context_unref(ctx);
 
-    wlr_keyboard_set_repeat_info(handle, repeat_rate->as_int(),
-                                 repeat_delay->as_int());
+    wlr_keyboard_set_repeat_info(handle, repeat_rate, repeat_delay);
 }
 
 wf_keyboard::~wf_keyboard() { }
@@ -175,29 +173,38 @@ static uint32_t mod_from_key(wlr_seat *seat, uint32_t key)
     return 0;
 }
 
-std::vector<std::function<void()>> input_manager::match_keys(uint32_t mod_state, uint32_t key, uint32_t mod_binding_key)
+std::vector<std::function<bool()>> input_manager::match_keys(uint32_t mod_state,
+    uint32_t key, uint32_t mod_binding_key)
 {
-    std::vector<std::function<void()>> callbacks;
+    std::vector<std::function<bool()>> callbacks;
 
     uint32_t actual_key = key == 0 ? mod_binding_key : key;
 
     for (auto& binding : bindings[WF_BINDING_KEY])
     {
-        if (binding->value->as_cached_key().matches({mod_state, key}) &&
+        auto as_key = std::dynamic_pointer_cast<
+            wf::config::option_t<wf::keybinding_t>> (binding->value);
+        assert(as_key);
+
+        if (as_key->get_value() == wf::keybinding_t{mod_state, key} &&
             binding->output == wf::get_core().get_active_output())
         {
             /* We must be careful because the callback might be erased,
              * so force copy the callback into the lambda */
             auto callback = binding->call.key;
             callbacks.push_back([actual_key, callback] () {
-                (*callback) (actual_key);
+                return (*callback) (actual_key);
             });
         }
     }
 
     for (auto& binding : bindings[WF_BINDING_ACTIVATOR])
     {
-        if (binding->value->matches_key({mod_state, key}) &&
+        auto as_activator = std::dynamic_pointer_cast<
+            wf::config::option_t<wf::activatorbinding_t>> (binding->value);
+        assert(as_activator);
+
+        if (as_activator->get_value().has_match(wf::keybinding_t{mod_state, key}) &&
             binding->output == wf::get_core().get_active_output())
         {
             /* We must be careful because the callback might be erased,
@@ -206,7 +213,7 @@ std::vector<std::function<void()>> input_manager::match_keys(uint32_t mod_state,
              * Also, do not send keys for modifier bindings */
             auto callback = binding->call.activator;
             callbacks.push_back([=] () {
-                (*callback) (ACTIVATOR_SOURCE_KEYBINDING,
+                return (*callback) (wf::ACTIVATOR_SOURCE_KEYBINDING,
                     mod_from_key(seat, actual_key) ? 0 : actual_key);
             });
         }
@@ -226,7 +233,7 @@ bool input_manager::handle_keyboard_key(uint32_t key, uint32_t state)
     if (mod)
         handle_keyboard_mod(mod, state);
 
-    std::vector<std::function<void()>> callbacks;
+    std::vector<std::function<bool()>> callbacks;
     auto kbd = wlr_seat_get_keyboard(seat);
 
     if (state == WLR_KEY_PRESSED)
@@ -260,8 +267,8 @@ bool input_manager::handle_keyboard_key(uint32_t key, uint32_t state)
     {
         if (mod_binding_key != 0)
         {
-            auto section = wf::get_core().config->get_section("input");
-            auto timeout = section->get_option("modifier_binding_timeout", "0")->as_int();
+            int timeout = wf::option_wrapper_t<int> (
+                "input/modifier_binding_timeout");
             if (timeout <= 0 ||
                 duration_cast<milliseconds>(steady_clock::now() - mod_binding_start)
                     <= milliseconds(timeout))
@@ -273,13 +280,14 @@ bool input_manager::handle_keyboard_key(uint32_t key, uint32_t state)
         mod_binding_key = 0;
     }
 
+    bool keybinding_handled = false;
     for (auto call : callbacks)
-        call();
+        keybinding_handled |= call();
 
     auto iv = interactive_view_from_view(keyboard_focus.get());
     if (iv) iv->handle_key(key, state);
 
-    return active_grab || !callbacks.empty();
+    return active_grab || keybinding_handled;
 }
 
 void input_manager::handle_keyboard_mod(uint32_t modifier, uint32_t state)

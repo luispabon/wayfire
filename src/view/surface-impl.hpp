@@ -1,8 +1,8 @@
 #ifndef SURFACE_IMPL_HPP
 #define SURFACE_IMPL_HPP
 
-#include <surface.hpp>
-#include <util.hpp>
+#include <wayfire/surface.hpp>
+#include <wayfire/util.hpp>
 
 extern "C"
 {
@@ -44,10 +44,10 @@ class wlr_surface_base_t
     wf::wl_listener_wrapper on_commit, on_destroy, on_new_subsurface;
 
     virtual void damage_surface_box(const wlr_box& box);
-    virtual void damage_surface_region(const wf_region& region);
+    virtual void damage_surface_region(const wf::region_t& region);
 
     void apply_surface_damage();
-    virtual void _wlr_render_box(const wf_framebuffer& fb, int x, int y,
+    virtual void _wlr_render_box(const wf::framebuffer_t& fb, int x, int y,
         const wlr_box& scissor);
 
     wlr_surface_base_t(wf::surface_interface_t *self);
@@ -61,7 +61,7 @@ class wlr_surface_base_t
     virtual ~wlr_surface_base_t();
 
     /** @return The offset from the surface coordinates to the actual geometry */
-    virtual wf_point get_window_offset();
+    virtual wf::point_t get_window_offset();
 
     /** Update the surface output */
     virtual void update_output(wf::output_t *old_output,
@@ -72,9 +72,9 @@ class wlr_surface_base_t
      * surface_implementation_t
      */
     virtual bool _is_mapped() const;
-    virtual wf_size_t _get_size() const;
-    virtual void _simple_render(const wf_framebuffer& fb, int x, int y,
-        const wf_region& damage);
+    virtual wf::dimensions_t _get_size() const;
+    virtual void _simple_render(const wf::framebuffer_t& fb, int x, int y,
+        const wf::region_t& damage);
 
   protected:
     virtual void map(wlr_surface *surface);
@@ -100,9 +100,9 @@ class wlr_child_surface_base_t :
 
     /* Just pass to the default wlr surface implementation */
     virtual bool is_mapped() const override { return _is_mapped(); }
-    virtual wf_size_t get_size() const override { return _get_size(); }
-    virtual void simple_render(const wf_framebuffer& fb, int x, int y,
-        const wf_region& damage) override {
+    virtual wf::dimensions_t get_size() const override { return _get_size(); }
+    virtual void simple_render(const wf::framebuffer_t& fb, int x, int y,
+        const wf::region_t& damage) override {
         _simple_render(fb, x, y, damage);
     }
     virtual void set_output(wf::output_t *output) override {

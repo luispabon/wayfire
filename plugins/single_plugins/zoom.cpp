@@ -1,70 +1,61 @@
-#include <plugin.hpp>
-#include <output.hpp>
-#include <opengl.hpp>
-#include <debug.hpp>
-#include <render-manager.hpp>
-#include <animation.hpp>
+#include <wayfire/plugin.hpp>
+#include <wayfire/output.hpp>
+#include <wayfire/opengl.hpp>
+#include <wayfire/debug.hpp>
+#include <wayfire/render-manager.hpp>
+#include <wayfire/util/duration.hpp>
 
 class wayfire_zoom_screen : public wf::plugin_interface_t
 {
-
-    wf::post_hook_t hook;
-    axis_callback axis;
-
-    wf_option speed, modifier, smoothing_duration;
-
-    float target_zoom = 1.0;
+    wf::option_wrapper_t<wf::keybinding_t> modifier{"zoom/modifier"};
+    wf::option_wrapper_t<double> speed{"zoom/speed"};
+    wf::option_wrapper_t<int> smoothing_duration{"zoom/smoothing_duration"};
+    wf::animation::simple_animation_t progression{smoothing_duration};
     bool hook_set = false;
-    wf_duration duration;
 
     public:
-        void init(wayfire_config *config)
+        void init() override
         {
-            hook = [=] (const wf_framebuffer_base& source, const wf_framebuffer_base& dest) {
-                render(source, dest);
-            };
+            grab_interface->name = "zoom";
+            grab_interface->capabilities = 0;
 
-            axis = [=] (wlr_event_pointer_axis* ev)
-            {
-                if (ev->orientation == WLR_AXIS_ORIENTATION_VERTICAL)
-                    update_zoom_target(ev->delta);
-            };
+            progression.set(1, 1);
 
-            auto section = config->get_section("zoom");
-            modifier = section->get_option("modifier", "<super>");
             output->add_axis(modifier, &axis);
-
-            speed    = section->get_option("speed", "0.005");
-            smoothing_duration = section->get_option("smoothing_duration", "300");
-
-            duration = wf_duration(smoothing_duration);
-            duration.start(1, 1); // so that the first value we get is correct
         }
 
         void update_zoom_target(float delta)
         {
-            const float last_target = target_zoom;
+            float target = progression.end;
+            target -= target * delta * speed;
+            target = wf::clamp(target, 1.0f, 50.0f);
 
-            target_zoom -= target_zoom * delta * speed->as_cached_double();
-            target_zoom = std::max(target_zoom, 1.0f);
-            target_zoom = std::min(target_zoom, 50.0f);
-
-            if (last_target != target_zoom)
+            if (target != progression.end)
             {
-                auto current = duration.progress();
-                duration.start(current, target_zoom);
+                progression.animate(target);
 
                 if (!hook_set)
                 {
                     hook_set = true;
-                    output->render->add_post(&hook);
+                    output->render->add_post(&render_hook);
                     output->render->set_redraw_always();
                 }
             }
         }
 
-        void render(const wf_framebuffer_base& source,
-            const wf_framebuffer_base& destination)
+        wf::axis_callback axis = [=] (wlr_event_pointer_axis* ev)
+        {
+            if (!output->can_activate_plugin(grab_interface))
+                return false;
+            if (ev->orientation != WLR_AXIS_ORIENTATION_VERTICAL)
+                return false;
+
+            update_zoom_target(ev->delta);
+            return true;
+        };
+
+        wf::post_hook_t render_hook = [=] (const wf::framebuffer_base_t& source,
+            const wf::framebuffer_base_t& destination)
         {
             auto w = destination.viewport_width;
             auto h = destination.viewport_height;
@@ -81,10 +72,9 @@ class wayfire_zoom_screen : public wf::plugin_interface_t
             x = box.x;
             y = h - box.y;
 
-            const float current_zoom = duration.progress();
-            const float scale = (current_zoom - 1) / current_zoom;
+            const float scale = (progression - 1) / progression;
 
-            const float tw = w / current_zoom, th = h / current_zoom;
+            const float tw = w / progression, th = h / progression;
             const float x1 = x * scale;
             const float y1 = y * scale;
 
@@ -95,18 +85,21 @@ class wayfire_zoom_screen : public wf::plugin_interface_t
                     GL_COLOR_BUFFER_BIT, GL_LINEAR));
             OpenGL::render_end();
 
-            if (!duration.running() && current_zoom - 1 <= 0.01)
-            {
-                output->render->set_redraw_always(false);
-                output->render->rem_post(&hook);
-                hook_set = false;
-            }
+            if (!progression.running() && progression - 1 <= 0.01)
+                unset_hook();
+        };
+
+        void unset_hook()
+        {
+            output->render->set_redraw_always(false);
+            output->render->rem_post(&render_hook);
+            hook_set = false;
         }
 
-        void fini()
+        void fini() override
         {
             if (hook_set)
-                output->render->rem_post(&hook);
+                output->render->rem_post(&render_hook);
 
             output->rem_binding(&axis);
         }

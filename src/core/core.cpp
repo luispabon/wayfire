@@ -29,18 +29,18 @@ extern "C"
 #include <unistd.h>
 #include <fcntl.h>
 
-#include "debug.hpp"
+#include <wayfire/util/log.hpp>
 #include "opengl-priv.hpp"
-#include "output.hpp"
-#include "workspace-manager.hpp"
+#include "wayfire/output.hpp"
+#include "wayfire/workspace-manager.hpp"
 #include "seat/input-manager.hpp"
 #include "seat/touch.hpp"
 #include "../view/view-impl.hpp"
 #include "../output/wayfire-shell.hpp"
 #include "../output/output-impl.hpp"
 #include "../output/gtk-shell.hpp"
-#include "img.hpp"
-#include "output-layout.hpp"
+#include "wayfire/img.hpp"
+#include "wayfire/output-layout.hpp"
 
 #include "core-impl.hpp"
 
@@ -118,7 +118,7 @@ void wf::compositor_core_impl_t::init()
      * init_desktop_apis() should come before input */
     output_layout = std::make_unique<wf::output_layout_t> (backend);
     compositor = wlr_compositor_create(display, renderer);
-    init_desktop_apis(config);
+    init_desktop_apis();
 
     /* Somehow GTK requires the tablet_v2 to be advertised pretty early */
     protocols.tablet_v2 = wlr_tablet_v2_create(display);
@@ -203,7 +203,7 @@ void wf::compositor_core_impl_t::warp_cursor(int x, int y)
     input->cursor->warp_cursor({1.0 * x, 1.0 * y});
 }
 
-wf_pointf wf::compositor_core_impl_t::get_cursor_position()
+wf::pointf_t wf::compositor_core_impl_t::get_cursor_position()
 {
     if (input->cursor) {
         return input->cursor->get_cursor_position();
@@ -212,7 +212,7 @@ wf_pointf wf::compositor_core_impl_t::get_cursor_position()
     }
 }
 
-wf_pointf wf::compositor_core_impl_t::get_touch_position(int id)
+wf::pointf_t wf::compositor_core_impl_t::get_touch_position(int id)
 {
     if (!input->our_touch)
         return {invalid_coordinate, invalid_coordinate};
@@ -284,10 +284,10 @@ void wf::compositor_core_impl_t::focus_output(wf::output_t *wo)
     }
 
     active_output = wo;
-    log_debug("focusing %p", wo);
+    LOGD("focusing ", wo);
     if (wo)
     {
-        log_debug("focus output: %s", wo->handle->name);
+        LOGD("focus output: ", wo->handle->name);
     }
 
     /* invariant: input is grabbed only if the current output
@@ -341,7 +341,7 @@ int wf::compositor_core_impl_t::focus_layer(uint32_t layer, int32_t request_uid_
     auto request_uid = request_uid_hint < 0 ?
         ++last_request_uid : request_uid_hint;
     layer_focus_requests.insert({layer, request_uid});
-    log_debug("focusing layer %d", get_focused_layer());
+    LOGD("focusing layer ", get_focused_layer());
 
     active_output->refocus();
     return request_uid;
@@ -362,7 +362,7 @@ void wf::compositor_core_impl_t::unfocus_layer(int request)
         if (freq.second == request)
         {
             layer_focus_requests.erase(freq);
-            log_debug("focusing layer %d", get_focused_layer());
+            LOGD("focusing layer ", get_focused_layer());
 
             active_output->refocus(nullptr);
             return;

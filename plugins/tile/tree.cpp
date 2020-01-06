@@ -1,17 +1,17 @@
 #include "tree.hpp"
-#include <debug.hpp>
-#include <util.hpp>
+#include <wayfire/debug.hpp>
+#include <wayfire/util.hpp>
 
-#include <output.hpp>
-#include <workspace-manager.hpp>
-#include <view-transform.hpp>
+#include <wayfire/output.hpp>
+#include <wayfire/workspace-manager.hpp>
+#include <wayfire/view-transform.hpp>
 #include <algorithm>
 
 namespace wf
 {
 namespace tile
 {
-void tree_node_t::set_geometry(wf_geometry geometry)
+void tree_node_t::set_geometry(wf::geometry_t geometry)
 {
     this->geometry = geometry;
 }
@@ -26,7 +26,7 @@ nonstd::observer_ptr<view_node_t> tree_node_t::as_view_node()
     return nonstd::make_observer(dynamic_cast<view_node_t*> (this));
 }
 
-wf_point get_output_local_coordinates(wf::output_t *output, wf_point p)
+wf::point_t get_output_local_coordinates(wf::output_t *output, wf::point_t p)
 {
     auto vp = output->workspace->get_current_workspace();
     auto size = output->get_screen_size();
@@ -36,9 +36,9 @@ wf_point get_output_local_coordinates(wf::output_t *output, wf_point p)
     return p;
 }
 
-wf_geometry get_output_local_coordinates(wf::output_t *output, wf_geometry g)
+wf::geometry_t get_output_local_coordinates(wf::output_t *output, wf::geometry_t g)
 {
-    auto new_tl = get_output_local_coordinates(output, wf_point{g.x, g.y});
+    auto new_tl = get_output_local_coordinates(output, wf::point_t{g.x, g.y});
     g.x = new_tl.x;
     g.y = new_tl.y;
 
@@ -46,10 +46,10 @@ wf_geometry get_output_local_coordinates(wf::output_t *output, wf_geometry g)
 }
 
 /* ---------------------- split_node_t implementation ----------------------- */
-wf_geometry split_node_t::get_child_geometry(
+wf::geometry_t split_node_t::get_child_geometry(
     int32_t child_pos, int32_t child_size)
 {
-    wf_geometry child_geometry = this->geometry;
+    wf::geometry_t child_geometry = this->geometry;
     switch (get_split_direction())
     {
         case SPLIT_HORIZONTAL:
@@ -66,7 +66,7 @@ wf_geometry split_node_t::get_child_geometry(
     return child_geometry;
 }
 
-int32_t split_node_t::calculate_splittable(wf_geometry available) const
+int32_t split_node_t::calculate_splittable(wf::geometry_t available) const
 {
     switch (get_split_direction())
     {
@@ -84,7 +84,7 @@ int32_t split_node_t::calculate_splittable() const
     return calculate_splittable(this->geometry);
 }
 
-void split_node_t::recalculate_children(wf_geometry available)
+void split_node_t::recalculate_children(wf::geometry_t available)
 {
     if (this->children.empty())
         return;
@@ -177,7 +177,7 @@ std::unique_ptr<tree_node_t> split_node_t::remove_child(
     return result;
 }
 
-void split_node_t::set_geometry(wf_geometry geometry)
+void split_node_t::set_geometry(wf::geometry_t geometry)
 {
     tree_node_t::set_geometry(geometry);
     recalculate_children(geometry);
@@ -210,17 +210,17 @@ struct view_node_custom_data_t : public custom_data_t
  */
 static const std::string scale_transformer_name =
     "simple-tile-scale-transformer";
-struct view_node_t::scale_transformer_t : public wf_2D_view
+struct view_node_t::scale_transformer_t : public wf::view_2D
 {
-    wf_geometry box;
+    wf::geometry_t box;
 
-    scale_transformer_t(wayfire_view view, wf_geometry box)
-        : wf_2D_view(view)
+    scale_transformer_t(wayfire_view view, wf::geometry_t box)
+        : wf::view_2D(view)
     {
         set_box(box);
     }
 
-    void set_box(wf_geometry box)
+    void set_box(wf::geometry_t box)
     {
         assert(box.width > 0 && box.height > 0);
 
@@ -268,7 +268,7 @@ view_node_t::~view_node_t()
     view->erase_data<view_node_custom_data_t>();
 }
 
-wf_geometry view_node_t::calculate_target_geometry()
+wf::geometry_t view_node_t::calculate_target_geometry()
 {
     /* Calculate view geometry in coordinates local to the active workspace,
      * because tree coordinates are kept in workspace-agnostic coordinates. */
@@ -296,7 +296,7 @@ wf_geometry view_node_t::calculate_target_geometry()
     return local_geometry;
 }
 
-void view_node_t::set_geometry(wf_geometry geometry)
+void view_node_t::set_geometry(wf::geometry_t geometry)
 {
     tree_node_t::set_geometry(geometry);
 

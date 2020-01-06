@@ -3,14 +3,14 @@
 
 #include <linux/input-event-codes.h>
 
-#include <compositor-surface.hpp>
-#include <output.hpp>
-#include <opengl.hpp>
-#include <core.hpp>
-#include <debug.hpp>
-#include <decorator.hpp>
-#include <view-transform.hpp>
-#include <signal-definitions.hpp>
+#include <wayfire/compositor-surface.hpp>
+#include <wayfire/output.hpp>
+#include <wayfire/opengl.hpp>
+#include <wayfire/core.hpp>
+#include <wayfire/debug.hpp>
+#include <wayfire/decorator.hpp>
+#include <wayfire/view-transform.hpp>
+#include <wayfire/signal-definitions.hpp>
 #include "deco-subsurface.hpp"
 
 #include <cairo.h>
@@ -72,14 +72,14 @@ GLuint get_text_texture(int width, int height,
 }
 
 class simple_decoration_surface : public wf::surface_interface_t,
-    public wf::compositor_surface_t, public wf_decorator_frame_t
+    public wf::compositor_surface_t, public wf::decorator_frame_t_t
 {
     bool _mapped = true;
     int thickness = normal_thickness;
     int titlebar = titlebar_thickness;
 
     wayfire_view view;
-    wf_option font_option;
+    wf::option_wrapper_t<std::string> font_option{"decoration/font"};
     wf::signal_callback_t title_set;
 
     int width = 100, height = 100;
@@ -92,10 +92,9 @@ class simple_decoration_surface : public wf::surface_interface_t,
 
 
   public:
-    simple_decoration_surface(wayfire_view view, wf_option font)
+    simple_decoration_surface(wayfire_view view)
         : surface_interface_t(view.get())
     {
-        this->font_option = font;
         this->view = view;
 
         title_set = [=] (wf::signal_data_t *data)
@@ -124,17 +123,17 @@ class simple_decoration_surface : public wf::surface_interface_t,
         return _mapped;
     }
 
-    wf_point get_offset() final
+    wf::point_t get_offset() final
     {
         return { -thickness, -titlebar };
     }
 
-    virtual wf_size_t get_size() const final
+    virtual wf::dimensions_t get_size() const final
     {
         return {width, height};
     }
 
-    void render_box(const wf_framebuffer& fb, int x, int y,
+    void render_box(const wf::framebuffer_t& fb, int x, int y,
         const wlr_box& scissor)
     {
         wlr_box geometry {x, y, width, height};
@@ -158,7 +157,7 @@ class simple_decoration_surface : public wf::surface_interface_t,
         if (tex == (uint)-1)
         {
             tex = get_text_texture(width * fb.scale, titlebar * fb.scale,
-                view->get_title(), font_option->as_string());
+                view->get_title(), font_option);
         }
 
         gl_geometry gg;
@@ -176,7 +175,7 @@ class simple_decoration_surface : public wf::surface_interface_t,
     }
 
     /* The region which is only the frame. Origin is 0,0 */
-    wf_region frame_region;
+    wf::region_t frame_region;
     void update_frame_region()
     {
         frame_region.clear();
@@ -186,10 +185,10 @@ class simple_decoration_surface : public wf::surface_interface_t,
         frame_region |= {0, (height - thickness), width, thickness}; // bottom
     }
 
-    virtual void simple_render(const wf_framebuffer& fb, int x, int y,
-        const wf_region& damage) override
+    virtual void simple_render(const wf::framebuffer_t& fb, int x, int y,
+        const wf::region_t& damage) override
     {
-        wf_region frame = this->frame_region + wf_point{x, y};
+        wf::region_t frame = this->frame_region + wf::point_t{x, y};
         frame *= fb.scale;
         frame &= damage;
 
@@ -289,8 +288,8 @@ class simple_decoration_surface : public wf::surface_interface_t,
     }
 
     /* frame implementation */
-    virtual wf_geometry expand_wm_geometry(
-        wf_geometry contained_wm_geometry) override
+    virtual wf::geometry_t expand_wm_geometry(
+        wf::geometry_t contained_wm_geometry) override
     {
         contained_wm_geometry.x -= thickness;
         contained_wm_geometry.y -= titlebar;
@@ -318,7 +317,7 @@ class simple_decoration_surface : public wf::surface_interface_t,
         this->active = active;
     }
 
-    virtual void notify_view_resized(wf_geometry view_geometry) override
+    virtual void notify_view_resized(wf::geometry_t view_geometry) override
     {
         view->damage();
 
@@ -359,9 +358,9 @@ class simple_decoration_surface : public wf::surface_interface_t,
     };
 };
 
-void init_view(wayfire_view view, wf_option font)
+void init_view(wayfire_view view)
 {
-    auto surf = new simple_decoration_surface(view, font);
+    auto surf = new simple_decoration_surface(view);
     view->set_decoration(surf);
     view->damage();
 }

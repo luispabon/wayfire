@@ -1,9 +1,9 @@
 #ifndef WF_MATCHER_PLUGIN_HPP
 #define WF_MATCHER_PLUGIN_HPP
 
-#include <core.hpp>
-#include <view.hpp>
-#include <config.hpp>
+#include <wayfire/core.hpp>
+#include <wayfire/view.hpp>
+#include <wayfire/option-wrapper.hpp>
 
 namespace wf
 {
@@ -18,14 +18,14 @@ namespace wf
         struct match_signal : public signal_data_t
         {
             std::unique_ptr<view_matcher> result;
-            wf_option expression;
+            wf::option_sptr_t<std::string> expression;
         };
 
 #define WF_MATCHER_CREATE_QUERY_SIGNAL "matcher-create-query"
 
         /* Tries to create a view matcher on the given domain (usually the output
          * of the plugin) with the given expression. May return null */
-        std::unique_ptr<view_matcher> get_matcher(wf_option expression)
+        std::unique_ptr<view_matcher> get_matcher(wf::option_sptr_t<std::string> expression)
         {
             match_signal data;
             data.expression = expression;

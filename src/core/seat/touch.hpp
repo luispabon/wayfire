@@ -2,8 +2,8 @@
 #define TOUCH_HPP
 
 #include <map>
-#include "util.hpp"
-#include "view.hpp"
+#include "wayfire/util.hpp"
+#include "wayfire/view.hpp"
 
 extern "C"
 {
@@ -15,17 +15,17 @@ struct wf_gesture_recognizer
     struct finger
     {
         int id;
-        wf_pointf current;
-        wf_pointf start;
+        wf::pointf_t current;
+        wf::pointf_t start;
 
         bool sent_to_client = false;
     };
 
     std::map<int, finger> current;
 
-    void update_touch(int32_t time, int id, wf_pointf point, bool real_update);
+    void update_touch(int32_t time, int id, wf::pointf_t point, bool real_update);
 
-    void register_touch(int time, int id, wf_pointf point);
+    void register_touch(int time, int id, wf::pointf_t point);
     void unregister_touch(int32_t time, int32_t id);
 
 private:

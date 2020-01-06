@@ -1,9 +1,9 @@
 #ifndef VIEW_IMPL_HPP
 #define VIEW_IMPL_HPP
 
-#include <nonstd/safe-list.hpp>
-#include <view.hpp>
-#include <opengl.hpp>
+#include <wayfire/nonstd/safe-list.hpp>
+#include <wayfire/view.hpp>
+#include <wayfire/opengl.hpp>
 
 #include "surface-impl.hpp"
 
@@ -13,8 +13,8 @@ extern "C"
 }
 
 // for emit_map_*()
-#include <compositor-view.hpp>
-#include <compositor-surface.hpp>
+#include <wayfire/compositor-view.hpp>
+#include <wayfire/compositor-surface.hpp>
 
 struct wlr_seat;
 namespace wf
@@ -22,8 +22,8 @@ namespace wf
 struct view_transform_block_t : public noncopyable_t
 {
     std::string plugin_name = "";
-    std::unique_ptr<wf_view_transformer_t> transform;
-    wf_framebuffer fb;
+    std::unique_ptr<wf::view_transformer_t> transform;
+    wf::framebuffer_t fb;
 
     view_transform_block_t();
     ~view_transform_block_t();
@@ -45,13 +45,13 @@ class view_interface_t::view_priv_impl
 
     /* For window restoration from maximized or fullscreen
      * -1 means that no such geometry has been stored. */
-    wf_geometry last_windowed_geometry = {0, 0, -1, -1};
-    wf_geometry last_maximized_geometry = {0, 0, -1, -1};
+    wf::geometry_t last_windowed_geometry = {0, 0, -1, -1};
+    wf::geometry_t last_maximized_geometry = {0, 0, -1, -1};
 
     /* those two point to the same object. Two fields are used to avoid
      * constant casting to and from types */
     surface_interface_t *decoration = NULL;
-    wf_decorator_frame_t *frame = NULL;
+    wf::decorator_frame_t_t *frame = NULL;
 
     uint32_t edges = 0;
     int in_continuous_move = 0;
@@ -59,9 +59,9 @@ class view_interface_t::view_priv_impl
 
     wf::safe_list_t<std::shared_ptr<view_transform_block_t>> transforms;
 
-    struct offscreen_buffer_t : public wf_framebuffer
+    struct offscreen_buffer_t : public wf::framebuffer_t
     {
-        wf_region cached_damage;
+        wf::region_t cached_damage;
         bool valid() { return this->fb != (uint32_t)-1; }
     } offscreen_buffer;
 };
@@ -86,13 +86,13 @@ class wlr_view_t :
 
     /* Subtract the opaque region of the surface from region, supposing
      * the surface is positioned at (x, y) */
-    virtual void subtract_opaque(wf_region& region, int x, int y) override final;
+    virtual void subtract_opaque(wf::region_t& region, int x, int y) override final;
     virtual void damage_surface_box(const wlr_box& box) override final;
 
     /* Functions which are further specialized for the different shells */
     virtual void move(int x, int y) override;
-    virtual wf_geometry get_wm_geometry() override;
-    virtual wf_geometry get_output_geometry() override;
+    virtual wf::geometry_t get_wm_geometry() override;
+    virtual wf::geometry_t get_output_geometry() override;
 
     virtual wlr_surface *get_keyboard_focus_surface() override;
 
@@ -118,21 +118,21 @@ class wlr_view_t :
      * transformer changes because the view is resized, we can't reliably
      * calculate the old view region to damage.
      */
-    wf_geometry last_bounding_box {0, 0, 0, 0};
+    wf::geometry_t last_bounding_box {0, 0, 0, 0};
 
     /**
      * Adjust the view position when resizing the view so that its apparent
      * position doesn't change when resizing.
      */
-    void adjust_anchored_edge(wf_size_t new_size);
+    void adjust_anchored_edge(wf::dimensions_t new_size);
 
     /** The output geometry of the view */
-    wf_geometry geometry {100, 100, 0, 0};
+    wf::geometry_t geometry {100, 100, 0, 0};
 
     /** Set the view position and optionally send the geometry changed signal
      * @param old_geometry The geometry to report as previous, in case the
      * signal is sent. */
-    virtual void set_position(int x, int y, wf_geometry old_geometry,
+    virtual void set_position(int x, int y, wf::geometry_t old_geometry,
         bool send_geometry_signal);
     /** Update the view size to the actual dimensions of its surface */
     virtual void update_size();
@@ -176,9 +176,9 @@ class wlr_view_t :
   public:
     /* Just pass to the default wlr surface implementation */
     virtual bool is_mapped() const override { return _is_mapped(); }
-    virtual wf_size_t get_size() const override { return _get_size(); }
-    virtual void simple_render(const wf_framebuffer& fb, int x, int y,
-        const wf_region& damage) override {
+    virtual wf::dimensions_t get_size() const override { return _get_size(); }
+    virtual void simple_render(const wf::framebuffer_t& fb, int x, int y,
+        const wf::region_t& damage) override {
         _simple_render(fb, x, y, damage);
     }
 };
@@ -196,7 +196,7 @@ void init_layer_shell();
 void xwayland_set_seat(wlr_seat *seat);
 int xwayland_get_display();
 
-void init_desktop_apis(wayfire_config *conf);
+void init_desktop_apis();
 }
 
 #endif /* end of include guard: VIEW_IMPL_HPP */

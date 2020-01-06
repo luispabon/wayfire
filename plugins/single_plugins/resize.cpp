@@ -1,12 +1,12 @@
 #include <cmath>
-#include <plugin.hpp>
-#include <debug.hpp>
-#include <output.hpp>
-#include <view.hpp>
-#include <core.hpp>
-#include <workspace-manager.hpp>
+#include <wayfire/plugin.hpp>
+#include <wayfire/debug.hpp>
+#include <wayfire/output.hpp>
+#include <wayfire/view.hpp>
+#include <wayfire/core.hpp>
+#include <wayfire/workspace-manager.hpp>
 #include <linux/input.h>
-#include <signal-definitions.hpp>
+#include <wayfire/signal-definitions.hpp>
 
 extern "C"
 {
@@ -19,26 +19,24 @@ class wayfire_resize : public wf::plugin_interface_t
 {
     wf::signal_callback_t resize_request, view_destroyed;
 
-    button_callback activate_binding;
-    touch_callback touch_activate_binding;
+    wf::button_callback activate_binding;
+    wf::touch_callback touch_activate_binding;
 
     wayfire_view view;
 
     bool was_client_request, is_using_touch;
-    wf_point grab_start;
-    wf_geometry grabbed_geometry;
+    wf::point_t grab_start;
+    wf::geometry_t grabbed_geometry;
 
     uint32_t edges;
+    wf::option_wrapper_t<wf::buttonbinding_t> button{"resize/activate"};
 
     public:
-    void init(wayfire_config *config)
+    void init() override
     {
         grab_interface->name = "resize";
         grab_interface->capabilities =
             wf::CAPABILITY_GRAB_INPUT | wf::CAPABILITY_MANAGE_DESKTOP;
-
-        auto button = config->get_section("resize")
-            ->get_option("activate", "<super> BTN_RIGHT");
 
         activate_binding = [=] (uint32_t, int, int)
         {
@@ -47,8 +45,9 @@ class wayfire_resize : public wf::plugin_interface_t
             {
                 is_using_touch = false;
                 was_client_request = false;
-                initiate(view);
+                return initiate(view);
             }
+            return false;
         };
 
         touch_activate_binding = [=] (int32_t sx, int32_t sy)
@@ -58,19 +57,22 @@ class wayfire_resize : public wf::plugin_interface_t
             {
                 is_using_touch = true;
                 was_client_request = false;
-                initiate(view);
+                return initiate(view);
             }
+            return false;
         };
 
         output->add_button(button, &activate_binding);
-        output->add_touch(new_static_option("<super> <shift>"), &touch_activate_binding);
+        output->add_touch(
+            wf::create_option_string<wf::keybinding_t>("<super> <shift>"),
+            &touch_activate_binding);
 
         grab_interface->callbacks.pointer.button = [=] (uint32_t b, uint32_t state)
         {
             if (state == WLR_BUTTON_RELEASED && was_client_request && b == BTN_LEFT)
                 return input_pressed(state);
 
-            if (b != button->as_cached_button().button)
+            if (b != wf::buttonbinding_t(button).get_button())
                 return;
 
             input_pressed(state);
@@ -136,9 +138,9 @@ class wayfire_resize : public wf::plugin_interface_t
     }
 
     /* Returns the currently used input coordinates in global compositor space */
-    wf_point get_global_input_coords()
+    wf::point_t get_global_input_coords()
     {
-        wf_pointf input;
+        wf::pointf_t input;
         if (is_using_touch) {
             input = wf::get_core().get_touch_position(0);
         } else {
@@ -149,14 +151,14 @@ class wayfire_resize : public wf::plugin_interface_t
     }
 
     /* Returns the currently used input coordinates in output-local space */
-    wf_point get_input_coords()
+    wf::point_t get_input_coords()
     {
         auto og = output->get_layout_geometry();
-        return get_global_input_coords() - wf_point{og.x, og.y};
+        return get_global_input_coords() - wf::point_t{og.x, og.y};
     }
 
     /* Calculate resize edges, grab starts at (sx, sy), view's geometry is vg */
-    uint32_t calculate_edges(wf_geometry vg, int sx, int sy)
+    uint32_t calculate_edges(wf::geometry_t vg, int sx, int sy)
     {
         int view_x = sx - vg.x;
         int view_y = sy - vg.y;
@@ -177,21 +179,21 @@ class wayfire_resize : public wf::plugin_interface_t
         return edges;
     }
 
-    void initiate(wayfire_view view, uint32_t forced_edges = 0)
+    bool initiate(wayfire_view view, uint32_t forced_edges = 0)
     {
         if (!view || view->role == wf::VIEW_ROLE_SHELL_VIEW || !view->is_mapped())
-            return;
+            return false;
 
         auto current_ws_impl =
             output->workspace->get_workspace_implementation();
         if (!current_ws_impl->view_resizable(view))
-            return;
+            return false;
 
         if (!output->activate_plugin(grab_interface))
-            return;
+            return false;
         if (!grab_interface->grab()) {
             output->deactivate_plugin(grab_interface);
-            return;
+            return false;
         }
 
         grab_start = get_input_coords();
@@ -226,6 +228,8 @@ class wayfire_resize : public wf::plugin_interface_t
 
         start_wobbly(view, anchor_x, anchor_y);
         wf::get_core().set_cursor(wlr_xcursor_get_resize_name((wlr_edges)edges));
+
+        return true;
     }
 
     void input_pressed(uint32_t state)
@@ -269,7 +273,7 @@ class wayfire_resize : public wf::plugin_interface_t
         view->resize(width, height);
     }
 
-    void fini()
+    void fini() override
     {
         if (grab_interface->is_grabbed())
             input_pressed(WLR_BUTTON_RELEASED);

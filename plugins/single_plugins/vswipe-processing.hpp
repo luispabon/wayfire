@@ -1,4 +1,4 @@
-#include <util.hpp>
+#include <wayfire/util.hpp>
 
 #include <cmath>
 
@@ -21,10 +21,10 @@ static inline double vswipe_process_delta(const double delta,
 
     // If we're moving further in the limit direction, slow down all the way
     // to extremely slow, but reversing the direction should be easier.
-    const double slowdown = clamp(ease,
+    const double slowdown = wf::clamp(ease,
             std::signbit(delta) == std::signbit(sdx_offset) ? 0.005 : 0.2, 1.0);
 
-    return clamp(delta / speed_factor, -speed_cap, speed_cap) * slowdown;
+    return wf::clamp(delta / speed_factor, -speed_cap, speed_cap) * slowdown;
 }
 
 static inline int vswipe_finish_target(const double accumulated_dx,

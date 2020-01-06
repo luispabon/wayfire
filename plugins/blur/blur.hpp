@@ -1,6 +1,6 @@
-#include <core.hpp>
-#include <opengl.hpp>
-#include <render-manager.hpp>
+#include <wayfire/core.hpp>
+#include <wayfire/opengl.hpp>
+#include <wayfire/render-manager.hpp>
 
 /* The MIT License (MIT)
  *
@@ -95,7 +95,7 @@ class wf_blur_base
     protected:
     /* used to store temporary results in blur algorithms, cleaned up in base
      * destructor */
-    wf_framebuffer_base fb[2];
+    wf::framebuffer_base_t fb[2];
     /* the program created by the given algorithm, cleaned up in base destructor */
     GLuint program[2];
     /* the program used by wf_blur_base to combine the blurred, unblurred and
@@ -107,20 +107,21 @@ class wf_blur_base
      * should be set by the constructor */
     std::string algorithm_name;
 
-    wf_option offset_opt, degrade_opt, iterations_opt;
-    wf_option_callback options_changed;
+    wf::option_wrapper_t<double> offset_opt;
+    wf::option_wrapper_t<int> degrade_opt, iterations_opt;
+    wf::config::option_base_t::updated_callback_t options_changed;
 
     wf::output_t *output;
 
     /* renders the in texture to the out framebuffer.
      * assumes a properly bound and initialized GL program */
-    void render_iteration(wf_framebuffer_base& in, wf_framebuffer_base& out,
+    void render_iteration(wf::framebuffer_base_t& in, wf::framebuffer_base_t& out,
         int width, int height);
 
     /* copy the source pixels from region, storing into result
      * returns the result geometry, in framebuffer coords */
-    wlr_box copy_region(wf_framebuffer_base& result,
-        const wf_framebuffer& source, const wf_region& region);
+    wlr_box copy_region(wf::framebuffer_base_t& result,
+        const wf::framebuffer_t& source, const wf::region_t& region);
 
     /* blur fb[0]
      * width and height are the scaled dimensions of the buffer
@@ -136,10 +137,10 @@ class wf_blur_base
     void damage_all_workspaces();
 
     virtual void pre_render(uint32_t src_tex, wlr_box src_box,
-        const wf_region& damage, const wf_framebuffer& target_fb);
+        const wf::region_t& damage, const wf::framebuffer_t& target_fb);
 
     virtual void render(uint32_t src_tex, wlr_box src_box, wlr_box scissor_box,
-        const wf_framebuffer& target_fb);
+        const wf::framebuffer_t& target_fb);
 };
 
 std::unique_ptr<wf_blur_base> create_box_blur(wf::output_t *output);

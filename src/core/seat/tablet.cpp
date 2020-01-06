@@ -2,7 +2,7 @@
 #include "../core-impl.hpp"
 #include "../wm.hpp"
 #include "input-manager.hpp"
-#include <signal-definitions.hpp>
+#include <wayfire/signal-definitions.hpp>
 #include <linux/input-event-codes.h>
 
 extern "C"
@@ -101,7 +101,7 @@ void wf::tablet_tool_t::update_tool_position()
         return;
 
     /* Figure out what surface is under the tool */
-    wf_pointf local; // local to the surface
+    wf::pointf_t local; // local to the surface
     wf::surface_interface_t *surface = nullptr;
     if (this->grabbed_surface)
     {

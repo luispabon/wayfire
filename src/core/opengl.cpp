@@ -1,8 +1,9 @@
+#include <wayfire/util/log.hpp>
 #include <fstream>
 #include "opengl-priv.hpp"
-#include "debug.hpp"
-#include "output.hpp"
+#include "wayfire/output.hpp"
 #include "core-impl.hpp"
+#include "config.h"
 
 extern "C"
 {
@@ -34,7 +35,8 @@ void gl_call(const char *func, uint32_t line, const char *glfunc) {
     if ((err = glGetError()) == GL_NO_ERROR)
         return;
 
-    log_error("gles2: function %s in %s line %u: %s", glfunc, func, line, gl_error_string(glGetError()));
+    LOGE("gles2: function ", glfunc, " in ", func, " line ", line, ": ",
+        gl_error_string(glGetError()));
 }
 
 namespace OpenGL
@@ -65,7 +67,7 @@ namespace OpenGL
 
         if (s == GL_FALSE)
         {
-            log_error("Failed to load shader from %s\n; Errors:\n%s", path.c_str(), b1);
+            LOGE("Failed to load shader from ", path, "\n; Errors:\n", b1);
             return -1;
         }
 
@@ -82,7 +84,7 @@ namespace OpenGL
         std::fstream file(path, std::ios::in);
         if(!file.is_open())
         {
-            log_error("cannot open shader file %s", path.c_str());
+            LOGE("cannot open shader file ", path);
             return -1;
         }
 
@@ -221,7 +223,7 @@ namespace OpenGL
         render_begin(10, 10, 0);
     }
 
-    void render_begin(const wf_framebuffer_base& fb)
+    void render_begin(const wf::framebuffer_base_t& fb)
     {
         render_begin(fb.viewport_width, fb.viewport_height, fb.fb);
     }
@@ -236,7 +238,7 @@ namespace OpenGL
         GL_CALL(glBindFramebuffer(GL_FRAMEBUFFER, fb));
     }
 
-    void clear(wf_color col, uint32_t mask)
+    void clear(wf::color_t col, uint32_t mask)
     {
         GL_CALL(glClearColor(col.r, col.g, col.b, col.a));
         GL_CALL(glClear(mask));
@@ -250,7 +252,7 @@ namespace OpenGL
     }
 }
 
-bool wf_framebuffer_base::allocate(int width, int height)
+bool wf::framebuffer_base_t::allocate(int width, int height)
 {
     bool first_allocate = false;
     if (fb == (uint32_t)-1)
@@ -297,7 +299,7 @@ bool wf_framebuffer_base::allocate(int width, int height)
         auto status = GL_CALL(glCheckFramebufferStatus(GL_FRAMEBUFFER));
         if (status != GL_FRAMEBUFFER_COMPLETE)
         {
-            log_error("failed to initialize framebuffer");
+            LOGE("Failed to initialize framebuffer");
             return false;
         }
     }
@@ -311,7 +313,7 @@ bool wf_framebuffer_base::allocate(int width, int height)
     return is_resize || first_allocate;
 }
 
-void wf_framebuffer_base::copy_state(wf_framebuffer_base&& other)
+void wf::framebuffer_base_t::copy_state(wf::framebuffer_base_t&& other)
 {
     this->viewport_width = other.viewport_width;
     this->viewport_height = other.viewport_height;
@@ -322,12 +324,12 @@ void wf_framebuffer_base::copy_state(wf_framebuffer_base&& other)
     other.reset();
 }
 
-wf_framebuffer_base::wf_framebuffer_base(wf_framebuffer_base&& other)
+wf::framebuffer_base_t::framebuffer_base_t(wf::framebuffer_base_t&& other)
 {
     copy_state(std::move(other));
 }
 
-wf_framebuffer_base& wf_framebuffer_base::operator = (wf_framebuffer_base&& other)
+wf::framebuffer_base_t& wf::framebuffer_base_t::operator = (wf::framebuffer_base_t&& other)
 {
     if (this == &other)
         return *this;
@@ -338,20 +340,20 @@ wf_framebuffer_base& wf_framebuffer_base::operator = (wf_framebuffer_base&& othe
     return *this;
 }
 
-void wf_framebuffer_base::bind() const
+void wf::framebuffer_base_t::bind() const
 {
     GL_CALL(glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fb));
     GL_CALL(glViewport(0, 0, viewport_width, viewport_height));
 }
 
-void wf_framebuffer_base::scissor(wlr_box box) const
+void wf::framebuffer_base_t::scissor(wlr_box box) const
 {
     GL_CALL(glEnable(GL_SCISSOR_TEST));
     GL_CALL(glScissor(box.x, viewport_height - box.y - box.height,
                       box.width, box.height));
 }
 
-void wf_framebuffer_base::release()
+void wf::framebuffer_base_t::release()
 {
     if (fb != uint32_t(-1) && fb != 0)
     {
@@ -366,19 +368,19 @@ void wf_framebuffer_base::release()
     reset();
 }
 
-void wf_framebuffer_base::reset()
+void wf::framebuffer_base_t::reset()
 {
     fb = -1;
     tex = -1;
     viewport_width = viewport_height = 0;
 }
 
-wlr_box wf_framebuffer::framebuffer_box_from_damage_box(wlr_box box) const
+wlr_box wf::framebuffer_t::framebuffer_box_from_damage_box(wlr_box box) const
 {
     if (has_nonstandard_transform)
     {
         // TODO: unimplemented, but also unused for now
-        log_error("unimplemented reached: framebuffer_box_from_geometry_box"
+        LOGE("unimplemented reached: framebuffer_box_from_geometry_box"
             " with has_nonstandard_transform");
         return {0, 0, 0, 0};
     }
@@ -391,13 +393,13 @@ wlr_box wf_framebuffer::framebuffer_box_from_damage_box(wlr_box box) const
     wl_output_transform transform =
         wlr_output_transform_invert((wl_output_transform)wl_transform);
 
-   // log_info("got %d,%d %dx%d, %d", box.x, box.y, box.width, box.height, wl_transform);
+   // LOGI("got %d,%d %dx%d, %d", box.x, box.y, box.width, box.height, wl_transform);
     wlr_box_transform(&result, &box, transform, width, height);
-  //  log_info("tr %d,%d %dx%d", box.x, box.y, box.width, box.height);
+  //  LOGI("tr %d,%d %dx%d", box.x, box.y, box.width, box.height);
     return result;
 }
 
-wlr_box wf_framebuffer::damage_box_from_geometry_box(wlr_box box) const
+wlr_box wf::framebuffer_t::damage_box_from_geometry_box(wlr_box box) const
 {
     box.x = std::floor(box.x * scale);
     box.y = std::floor(box.y * scale);
@@ -407,17 +409,17 @@ wlr_box wf_framebuffer::damage_box_from_geometry_box(wlr_box box) const
     return box;
 }
 
-wlr_box wf_framebuffer::framebuffer_box_from_geometry_box(wlr_box box) const
+wlr_box wf::framebuffer_t::framebuffer_box_from_geometry_box(wlr_box box) const
 {
     return framebuffer_box_from_damage_box(damage_box_from_geometry_box(box));
 }
 
-wf_region wf_framebuffer::get_damage_region() const
+wf::region_t wf::framebuffer_t::get_damage_region() const
 {
     return damage_box_from_geometry_box({0, 0, geometry.width, geometry.height});
 }
 
-glm::mat4 wf_framebuffer::get_orthographic_projection() const
+glm::mat4 wf::framebuffer_t::get_orthographic_projection() const
 {
     auto ortho = glm::ortho(1.0f * geometry.x,
         1.0f * geometry.x + 1.0f * geometry.width,

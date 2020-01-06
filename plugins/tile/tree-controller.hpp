@@ -2,7 +2,7 @@
 #define WF_TILE_PLUGIN_TREE_CONTROLLER_HPP
 
 #include "tree.hpp"
-#include <config.hpp>
+#include <wayfire/option-wrapper.hpp>
 
 /* Contains functions which are related to manipulating the tiling tree */
 namespace wf
@@ -21,7 +21,7 @@ void for_each_view(nonstd::observer_ptr<tree_node_t> root,
  * The goal is that all views appear together in the stacking list, and that
  * fullscreen views are always on the top of tiled non-fullscreen views.
  */
-void restack_output_workspace(wf::output_t *output, wf_point workspace);
+void restack_output_workspace(wf::output_t *output, wf::point_t workspace);
 
 enum split_insertion_t
 {
@@ -57,7 +57,7 @@ class tile_controller_t
     virtual ~tile_controller_t() = default;
 
     /** Called when the input is moved */
-    virtual void input_motion(wf_point input) {}
+    virtual void input_motion(wf::point_t input) {}
 
     /**
      * Called when the input is released or the controller should stop
@@ -82,17 +82,17 @@ class move_view_controller_t : public tile_controller_t
      * @param Where the grab has started
      */
     move_view_controller_t(std::unique_ptr<tree_node_t>& root,
-        wf_point grab);
+        wf::point_t grab);
     ~move_view_controller_t();
 
-    void input_motion(wf_point input) override;
+    void input_motion(wf::point_t input) override;
     void input_released() override;
 
   protected:
     std::unique_ptr<tree_node_t>& root;
     nonstd::observer_ptr<view_node_t> grabbed_view;
     wf::output_t* output;
-    wf_point current_input;
+    wf::point_t current_input;
 
     nonstd::observer_ptr<wf::preview_indication_view_t> preview;
     /**
@@ -101,12 +101,12 @@ class move_view_controller_t : public tile_controller_t
      * @param now The position of the input now. Used only if the preview
      *            needs to be created.
      */
-    void ensure_preview(wf_point now);
+    void ensure_preview(wf::point_t now);
 
     /**
      * Return the node under the input which is suitable for dropping on.
      */
-    nonstd::observer_ptr<view_node_t> check_drop_destination(wf_point input);
+    nonstd::observer_ptr<view_node_t> check_drop_destination(wf::point_t input);
 };
 
 class resize_view_controller_t : public tile_controller_t
@@ -120,21 +120,21 @@ class resize_view_controller_t : public tile_controller_t
      * @param Where the grab has started
      */
     resize_view_controller_t(std::unique_ptr<tree_node_t>& root,
-        wf_point grab);
+        wf::point_t grab);
     ~resize_view_controller_t();
 
-    void input_motion(wf_point input) override;
+    void input_motion(wf::point_t input) override;
 
   protected:
     std::unique_ptr<tree_node_t>& root;
 
     /** Last input event location */
-    wf_point last_point;
+    wf::point_t last_point;
 
     /** Edges of the grabbed view that we're resizing */
     uint32_t resizing_edges;
     /** Calculate the resizing edges for the grabbing view. */
-    uint32_t calculate_resizing_edges(wf_point point);
+    uint32_t calculate_resizing_edges(wf::point_t point);
 
     /** The view we are resizing */
     nonstd::observer_ptr<view_node_t> grabbed_view;

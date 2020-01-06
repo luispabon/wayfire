@@ -1,11 +1,11 @@
 #include "seat.hpp"
-#include "opengl.hpp"
+#include "wayfire/opengl.hpp"
 #include "../core-impl.hpp"
 #include "input-manager.hpp"
-#include "render-manager.hpp"
-#include "output-layout.hpp"
-#include "debug.hpp"
-#include "signal-definitions.hpp"
+#include "wayfire/render-manager.hpp"
+#include "wayfire/output-layout.hpp"
+#include <wayfire/util/log.hpp>
+#include "wayfire/signal-definitions.hpp"
 
 extern "C"
 {
@@ -29,7 +29,7 @@ wf_drag_icon::wf_drag_icon(wlr_drag_icon *ic)
     on_destroy.connect(&icon->events.destroy);
 }
 
-wf_point wf_drag_icon::get_offset()
+wf::point_t wf_drag_icon::get_offset()
 {
     auto pos = icon->drag->grab_type == WLR_DRAG_GRAB_KEYBOARD_TOUCH ?
         wf::get_core().get_touch_position(icon->drag->touch_id) :
@@ -91,8 +91,8 @@ void input_manager::validate_drag_request(wlr_seat_request_start_drag_event *ev)
         return;
     }
 
-    log_debug("Ignoring start_drag request: "
-        "could not validate pointer or touch serial %" PRIu32, ev->serial);
+    LOGD("Ignoring start_drag request: ",
+        "could not validate pointer or touch serial ", ev->serial);
     wlr_data_source_destroy(ev->drag->source);
 }
 
@@ -199,8 +199,8 @@ wf_input_device_internal::wf_input_device_internal(wlr_input_device *dev)
     on_destroy.connect(&dev->events.destroy);
 }
 
-wf_pointf get_surface_relative_coords(wf::surface_interface_t *surface,
-    const wf_pointf& point)
+wf::pointf_t get_surface_relative_coords(wf::surface_interface_t *surface,
+    const wf::pointf_t& point)
 {
     auto og = surface->get_output()->get_layout_geometry();
     auto local = point;

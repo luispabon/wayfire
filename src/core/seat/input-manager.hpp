@@ -8,10 +8,11 @@
 #include "seat.hpp"
 #include "cursor.hpp"
 #include "pointer.hpp"
-#include "plugin.hpp"
-#include "view.hpp"
-#include "core.hpp"
-#include "signal-definitions.hpp"
+#include "wayfire/plugin.hpp"
+#include "wayfire/view.hpp"
+#include "wayfire/core.hpp"
+#include "wayfire/signal-definitions.hpp"
+#include <wayfire/option-wrapper.hpp>
 
 extern "C"
 {
@@ -37,24 +38,24 @@ enum wf_binding_type
     WF_BINDING_ACTIVATOR
 };
 
-struct wf_binding
+struct wf::binding_t
 {
-    wf_option value;
+    std::shared_ptr<wf::config::option_base_t> value;
     wf_binding_type type;
     wf::output_t *output;
 
     union {
         void *raw;
-        key_callback *key;
-        axis_callback *axis;
-        touch_callback *touch;
-        button_callback *button;
-        gesture_callback *gesture;
-        activator_callback *activator;
+        wf::key_callback *key;
+        wf::axis_callback *axis;
+        wf::touch_callback *touch;
+        wf::button_callback *button;
+        wf::gesture_callback *gesture;
+        wf::activator_callback *activator;
     } call;
 };
 
-using wf_binding_ptr = std::unique_ptr<wf_binding>;
+using wf_binding_ptr = std::unique_ptr<wf::binding_t>;
 
 /* TODO: most probably we want to split even more of input_manager's functionality into
  * wf_keyboard, wf_cursor and wf_touch */
@@ -70,8 +71,8 @@ class input_manager
 
         int gesture_id;
 
-        std::map<wf_binding_type, std::vector<std::unique_ptr<wf_binding>>> bindings;
-        using binding_criteria = std::function<bool(wf_binding*)>;
+        std::map<wf_binding_type, std::vector<std::unique_ptr<wf::binding_t>>> bindings;
+        using binding_criteria = std::function<bool(wf::binding_t*)>;
         void rem_binding(binding_criteria criteria);
 
         bool is_touch_enabled();
@@ -80,7 +81,7 @@ class input_manager
 
         void validate_drag_request(wlr_seat_request_start_drag_event *ev);
         std::chrono::steady_clock::time_point mod_binding_start;
-        std::vector<std::function<void()>> match_keys(uint32_t mods, uint32_t key, uint32_t mod_binding_key = 0);
+        std::vector<std::function<bool()>> match_keys(uint32_t mods, uint32_t key, uint32_t mod_binding_key = 0);
 
         wf::signal_callback_t surface_map_state_changed;
         wf::signal_callback_t output_added;
@@ -98,7 +99,7 @@ class input_manager
 
         void update_drag_icon();
 
-        void set_touch_focus(wf::surface_interface_t *surface, uint32_t time, int id, wf_pointf local);
+        void set_touch_focus(wf::surface_interface_t *surface, uint32_t time, int id, wf::pointf_t local);
 
        wf::plugin_grab_interface_t* active_grab = nullptr;
        wl_client *exclusive_client = NULL;
@@ -129,7 +130,7 @@ class input_manager
         void set_exclusive_focus(wl_client *client);
         // returns the surface under the given global coordinates
         // if no such surface (return NULL), lx and ly are undefined
-        wf::surface_interface_t* input_surface_at(wf_pointf global, wf_pointf& local);
+        wf::surface_interface_t* input_surface_at(wf::pointf_t global, wf::pointf_t& local);
 
         uint32_t get_modifiers();
 
@@ -138,19 +139,25 @@ class input_manager
         bool handle_keyboard_key(uint32_t key, uint32_t state);
         void handle_keyboard_mod(uint32_t key, uint32_t state);
 
-        void handle_touch_down  (uint32_t time, int32_t id, wf_pointf pos);
-        void handle_touch_motion(uint32_t time, int32_t id, wf_pointf pos, bool real_update);
+        void handle_touch_down  (uint32_t time, int32_t id, wf::pointf_t pos);
+        void handle_touch_motion(uint32_t time, int32_t id, wf::pointf_t pos, bool real_update);
         void handle_touch_up    (uint32_t time, int32_t id);
 
-        void handle_gesture(wf_touch_gesture g);
+        void handle_gesture(wf::touchgesture_t g);
 
         bool check_button_bindings(uint32_t button);
         bool check_axis_bindings(wlr_event_pointer_axis *ev);
         void check_touch_bindings(int32_t x, int32_t y);
 
-        wf_binding* new_binding(wf_binding_type type, wf_option value, wf::output_t *output, void *callback);
+        /**
+         * TODO: figure out a way to not erase the type of the option.
+         */
+        wf::binding_t* new_binding(wf_binding_type type,
+            std::shared_ptr<wf::config::option_base_t> value,
+            wf::output_t *output, void *callback);
+
         void rem_binding(void *callback);
-        void rem_binding(wf_binding *binding);
+        void rem_binding(wf::binding_t *binding);
 };
 
 template<class EventType>

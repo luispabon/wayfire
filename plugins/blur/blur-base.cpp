@@ -1,7 +1,8 @@
 #include "blur.hpp"
-#include <debug.hpp>
-#include <output.hpp>
-#include <workspace-manager.hpp>
+#include <wayfire/debug.hpp>
+#include <wayfire/output.hpp>
+#include <wayfire/workspace-manager.hpp>
+#include <wayfire/util/log.hpp>
 
 static const char* blur_blend_vertex_shader = R"(
 #version 100
@@ -41,18 +42,14 @@ wf_blur_base::wf_blur_base(wf::output_t *output,
     this->output = output;
     this->algorithm_name = defaults.algorithm_name;
 
-    auto section = wf::get_core().config->get_section("blur");
-    this->offset_opt = section->get_option(algorithm_name + "_offset",
-        defaults.offset);
-    this->degrade_opt = section->get_option(algorithm_name + "_degrade",
-        defaults.degrade);
-    this->iterations_opt = section->get_option(algorithm_name + "_iterations",
-        defaults.iterations);
+    this->offset_opt.load_option("blur/" + algorithm_name + "_offset");
+    this->degrade_opt.load_option("blur/" + algorithm_name + "_degrade");
+    this->iterations_opt.load_option("blur/" + algorithm_name + "_iterations");
 
     this->options_changed = [=] () { damage_all_workspaces(); };
-    this->offset_opt->add_updated_handler(&options_changed);
-    this->degrade_opt->add_updated_handler(&options_changed);
-    this->iterations_opt->add_updated_handler(&options_changed);
+    this->offset_opt.set_callback(options_changed);
+    this->degrade_opt.set_callback(options_changed);
+    this->iterations_opt.set_callback(options_changed);
 
     OpenGL::render_begin();
     blend_program = OpenGL::create_program_from_source(
@@ -69,10 +66,6 @@ wf_blur_base::wf_blur_base(wf::output_t *output,
 
 wf_blur_base::~wf_blur_base()
 {
-    this->offset_opt->rem_updated_handler(&options_changed);
-    this->degrade_opt->rem_updated_handler(&options_changed);
-    this->iterations_opt->rem_updated_handler(&options_changed);
-
     OpenGL::render_begin();
     fb[0].release();
     fb[1].release();
@@ -84,7 +77,7 @@ wf_blur_base::~wf_blur_base()
 
 int wf_blur_base::calculate_blur_radius()
 {
-    return offset_opt->as_cached_double() * degrade_opt->as_cached_int() * iterations_opt->as_cached_int();
+    return offset_opt * degrade_opt * iterations_opt;
 }
 
 void wf_blur_base::damage_all_workspaces()
@@ -100,8 +93,8 @@ void wf_blur_base::damage_all_workspaces()
     }
 }
 
-void wf_blur_base::render_iteration(wf_framebuffer_base& in,
-    wf_framebuffer_base& out, int width, int height)
+void wf_blur_base::render_iteration(wf::framebuffer_base_t& in,
+    wf::framebuffer_base_t& out, int width, int height)
 {
     /* Special case for small regions where we can't really blur, because we
      * simply have too few pixels */
@@ -115,8 +108,8 @@ void wf_blur_base::render_iteration(wf_framebuffer_base& in,
     GL_CALL(glDrawArrays(GL_TRIANGLE_FAN, 0, 4));
 }
 
-wlr_box wf_blur_base::copy_region(wf_framebuffer_base& result,
-    const wf_framebuffer& source, const wf_region& region)
+wlr_box wf_blur_base::copy_region(wf::framebuffer_base_t& result,
+    const wf::framebuffer_t& source, const wf::region_t& region)
 {
     auto subbox = source.framebuffer_box_from_damage_box(
         wlr_box_from_pixman_box(region.get_extents()));
@@ -128,7 +121,7 @@ wlr_box wf_blur_base::copy_region(wf_framebuffer_base& result,
      * between the source and final image.
      * To make things a bit more stable, we first blit to a size which
      * is divisble by degrade */
-    int degrade = degrade_opt->as_int();
+    int degrade = degrade_opt;
     int rounded_width = std::max(1, subbox.width + subbox.width % degrade);
     int rounded_height = std::max(1, subbox.height + subbox.height % degrade);
 
@@ -148,9 +141,9 @@ wlr_box wf_blur_base::copy_region(wf_framebuffer_base& result,
 }
 
 void wf_blur_base::pre_render(uint32_t src_tex, wlr_box src_box,
-    const wf_region& damage, const wf_framebuffer& target_fb)
+    const wf::region_t& damage, const wf::framebuffer_t& target_fb)
 {
-    int degrade = degrade_opt->as_int();
+    int degrade = degrade_opt;
     auto damage_box = copy_region(fb[0], target_fb, damage);
     int scaled_width = std::max(1, damage_box.width / degrade);
     int scaled_height = std::max(1, damage_box.height / degrade);
@@ -162,7 +155,7 @@ void wf_blur_base::pre_render(uint32_t src_tex, wlr_box src_box,
         std::swap(fb[0], fb[1]);
 
     /* Support iterations = 0 */
-    if (iterations_opt->as_int() == 0 && algorithm_name != "bokeh")
+    if (iterations_opt == 0 && algorithm_name != "bokeh")
     {
         int rounded_width = std::max(1, damage_box.width + damage_box.width % degrade);
         int rounded_height = std::max(1, damage_box.height + damage_box.height % degrade);
@@ -180,7 +173,7 @@ void wf_blur_base::pre_render(uint32_t src_tex, wlr_box src_box,
     /* we subtract target_fb's position to so that
      * view box is relative to framebuffer */
     auto view_box = target_fb.framebuffer_box_from_geometry_box(
-        src_box + wf_point{-target_fb.geometry.x, -target_fb.geometry.y});
+        src_box + wf::point_t{-target_fb.geometry.x, -target_fb.geometry.y});
 
     OpenGL::render_begin();
     fb[1].allocate(view_box.width, view_box.height);
@@ -192,7 +185,7 @@ void wf_blur_base::pre_render(uint32_t src_tex, wlr_box src_box,
      * together in render()
      *
      * local_geometry is damage_box relative to view box */
-    wlr_box local_box = damage_box + wf_point{-view_box.x, -view_box.y};
+    wlr_box local_box = damage_box + wf::point_t{-view_box.x, -view_box.y};
     GL_CALL(glBlitFramebuffer(0, 0, scaled_width, scaled_height,
             local_box.x,
             view_box.height - local_box.y - local_box.height,
@@ -204,7 +197,7 @@ void wf_blur_base::pre_render(uint32_t src_tex, wlr_box src_box,
 }
 
 void wf_blur_base::render(uint32_t src_tex, wlr_box src_box, wlr_box scissor_box,
-    const wf_framebuffer& target_fb)
+    const wf::framebuffer_t& target_fb)
 {
     wlr_box fb_geom = target_fb.framebuffer_box_from_geometry_box(target_fb.geometry);
     auto view_box = target_fb.framebuffer_box_from_geometry_box(src_box);
@@ -265,7 +258,7 @@ std::unique_ptr<wf_blur_base> create_blur_from_name(wf::output_t *output,
     if (algorithm_name == "gaussian")
         return create_gaussian_blur(output);
 
-    log_error ("Unrecognized blur algorithm %s. Using default kawase blur.",
+    LOGE ("Unrecognized blur algorithm %s. Using default kawase blur.",
         algorithm_name.c_str());
     return create_kawase_blur(output);
 }

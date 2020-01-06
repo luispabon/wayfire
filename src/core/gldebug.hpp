@@ -1,5 +1,5 @@
 #include <GLES3/gl32.h>
-#include <debug.hpp>
+#include <wayfire/debug.hpp>
 
 const char *getStrSrc(GLenum src)
 {
@@ -39,14 +39,13 @@ void errorHandler(GLenum src, GLenum type, GLuint id, GLenum severity,
     if(severity == GL_DEBUG_SEVERITY_NOTIFICATION)
         return;
 
-    log_info(
-        "_______________________________________________\n"
-        "Source: %s\n"
-        "Type: %s\n"
-        "Severity: %s\n"
-        "Msg: %s\n"
+    LOGI(
         "_______________________________________________\n",
-        getStrSrc(src), getStrType(type), getStrSeverity(severity), msg);
+        "Source: ", getStrSrc(src), "\n",
+        "Type: ", getStrType(type), "\n",
+        "Severity: ", getStrSeverity(severity), "\n",
+        "Msg: ", msg, "\n",
+        "_______________________________________________\n");
 }
 
 void enable_gl_synchronuous_debug()

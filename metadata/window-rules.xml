@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<wayfire>
+	<plugin name="window-rules">
+	<_short>Window Rules</_short>
+	<category>Desktop</category>
+	</plugin>
+</wayfire>

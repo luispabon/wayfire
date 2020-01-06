@@ -1,11 +1,11 @@
-#include "core.hpp"
+#include "wayfire/core.hpp"
 #include "../core/core-impl.hpp"
 #include "../output/gtk-shell.hpp"
-#include "debug.hpp"
 #include "view-impl.hpp"
-#include "decorator.hpp"
-#include "signal-definitions.hpp"
-#include "workspace-manager.hpp"
+#include "wayfire/decorator.hpp"
+#include "wayfire/signal-definitions.hpp"
+#include "wayfire/workspace-manager.hpp"
+#include <wayfire/util/log.hpp>
 
 #include "xdg-shell.hpp"
 
@@ -73,14 +73,14 @@ void wf::wlr_view_t::handle_minimize_hint(wf::surface_interface_t *relative_to,
         dynamic_cast<view_interface_t*> (relative_to);
     if (!relative_to_view)
     {
-        log_error("Setting minimize hint to unknown surface. Wayfire currently"
+        LOGE("Setting minimize hint to unknown surface. Wayfire currently"
             "supports only setting hints relative to views.");
         return;
     }
 
     if (relative_to_view->get_output() != get_output())
     {
-        log_info("Minimize hint set to surface on a different output, "
+        LOGE("Minimize hint set to surface on a different output, "
             "problems might arise");
         /* TODO: translate coordinates in case minimize hint is on another output */
     }
@@ -99,7 +99,7 @@ wlr_box wf::wlr_view_t::get_minimize_hint()
     return this->minimize_hint;
 }
 
-void wf::wlr_view_t::subtract_opaque(wf_region& region, int x, int y)
+void wf::wlr_view_t::subtract_opaque(wf::region_t& region, int x, int y)
 {
     auto& maximal_shrink_constraint =
         wf::surface_interface_t::impl::active_shrink_constraint;
@@ -118,7 +118,7 @@ void wf::wlr_view_t::subtract_opaque(wf_region& region, int x, int y)
 }
 
 void wf::wlr_view_t::set_position(int x, int y,
-    wf_geometry old_geometry, bool send_signal)
+    wf::geometry_t old_geometry, bool send_signal)
 {
     auto obox = get_output_geometry();
     auto wm   = get_wm_geometry();
@@ -153,7 +153,7 @@ void wf::wlr_view_t::move(int x, int y)
     set_position(x, y, get_wm_geometry(), true);
 }
 
-void wf::wlr_view_t::adjust_anchored_edge(wf_size_t new_size)
+void wf::wlr_view_t::adjust_anchored_edge(wf::dimensions_t new_size)
 {
     if (view_impl->edges)
     {
@@ -200,12 +200,12 @@ void wf::wlr_view_t::update_size()
         view_impl->frame->notify_view_resized(get_wm_geometry());
 }
 
-wf_geometry wf::wlr_view_t::get_output_geometry()
+wf::geometry_t wf::wlr_view_t::get_output_geometry()
 {
     return geometry;
 }
 
-wf_geometry wf::wlr_view_t::get_wm_geometry()
+wf::geometry_t wf::wlr_view_t::get_wm_geometry()
 {
     if (view_impl->frame)
         return view_impl->frame->expand_wm_geometry(geometry);
@@ -279,10 +279,7 @@ void wf::wlr_view_t::map(wlr_surface *surface)
 void wf::wlr_view_t::unmap()
 {
     damage();
-    /* Pre-unmap is typically used for animations. If the view is a regular
-     * toplevel view, we don't need to animate */
-    if (this->role == wf::VIEW_ROLE_TOPLEVEL)
-        emit_view_pre_unmap();
+    emit_view_pre_unmap();
 
     destroy_toplevel();
 
@@ -429,20 +426,14 @@ void wf::wlr_view_t::toplevel_send_app_id()
     auto gtk_shell_app_id = wf_gtk_shell_get_custom_app_id(
         wf::get_core_impl().gtk_shell, surface->resource);
 
-    auto section = wf::get_core().config->get_section("workarounds");
-    auto app_id_mode = section->get_option("app_id_mode", "stock");
+    std::string app_id_mode =
+        wf::option_wrapper_t<std::string> ("workarounds/app_id_mode");
 
-    if (app_id_mode->as_string() == "gtk-shell" &&
-        gtk_shell_app_id.length() > 0)
-    {
+    if (app_id_mode == "gtk-shell" && gtk_shell_app_id.length() > 0) {
         app_id = gtk_shell_app_id;
-    }
-    else if (app_id_mode->as_string() == "full")
-    {
+    } else if (app_id_mode == "full") {
         app_id = default_app_id + " " + gtk_shell_app_id;
-    }
-    else
-    {
+    } else {
         app_id = default_app_id;
     }
 
@@ -479,11 +470,13 @@ void wf::wlr_view_t::desktop_state_updated()
     toplevel_send_state();
 }
 
-void wf::init_desktop_apis(wayfire_config *conf)
+void wf::init_desktop_apis()
 {
     init_xdg_shell();
     init_layer_shell();
-    if (conf->get_section("core")->get_option("xwayland", "1")->as_int())
+
+    wf::option_wrapper_t<bool> xwayland_enabled("core/xwayland");
+    if (xwayland_enabled == 1)
         init_xwayland();
 }
 
@@ -516,7 +509,7 @@ wf::view_interface_t* wf::wf_view_from_void(void *handle)
     return static_cast<wf::view_interface_t*> (handle);
 }
 
-wf::compositor_surface_t *wf::wf_compositor_surface_from_surface(
+wf::compositor_surface_t *wf::compositor_surface_from_surface(
     wf::surface_interface_t *surface)
 {
     return dynamic_cast<wf::compositor_surface_t*> (surface);
@@ -548,8 +541,6 @@ wayfire_view wf::wl_surface_to_wayfire_view(wl_resource *resource)
         handle = wlr_xwayland_surface_from_wlr_surface(surface)->data;
 #endif
 
-    log_info("data is %p", handle);
     wf::view_interface_t* view = wf::wf_view_from_void(handle);
-    log_info("success? %p", view);
     return view ? view->self() : nullptr;
 }

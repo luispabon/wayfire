@@ -27,8 +27,8 @@ class wayfire_xdg_popup : public wf::wlr_child_surface_base_t
     wayfire_xdg_popup(XdgPopupVersion *popup);
     ~wayfire_xdg_popup();
 
-    virtual wf_point get_offset() override;
-    virtual wf_point get_window_offset() override;
+    virtual wf::point_t get_offset() override;
+    virtual wf::point_t get_window_offset() override;
     void send_done();
 };
 
@@ -47,7 +47,7 @@ class wayfire_xdg_view : public wf::wlr_view_t
                             on_request_fullscreen, on_set_parent,
                             on_set_title, on_set_app_id;
 
-    wf_point xdg_surface_offset = {0, 0};
+    wf::point_t xdg_surface_offset = {0, 0};
     XdgToplevelVersion *xdg_toplevel;
 
   public:
@@ -57,8 +57,8 @@ class wayfire_xdg_view : public wf::wlr_view_t
     void map(wlr_surface *surface) final;
     void commit() final;
 
-    wf_point get_window_offset() final;
-    wf_geometry get_wm_geometry() final;
+    wf::point_t get_window_offset() final;
+    wf::geometry_t get_wm_geometry() final;
 
     void set_tiled(uint32_t edges) final;
     void set_activated(bool act) final;

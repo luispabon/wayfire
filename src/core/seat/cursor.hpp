@@ -2,7 +2,7 @@
 #define CURSOR_HPP
 
 #include "seat.hpp"
-#include "plugin.hpp"
+#include "wayfire/plugin.hpp"
 
 extern "C"
 {
@@ -31,8 +31,8 @@ struct wf_cursor
     void hide_cursor();
 
     /* Move the cursor to the given point */
-    void warp_cursor(wf_pointf point);
-    wf_pointf get_cursor_position();
+    void warp_cursor(wf::pointf_t point);
+    wf::pointf_t get_cursor_position();
     void init_xcursor();
 
     void setup_listeners();

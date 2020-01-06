@@ -1,16 +1,17 @@
-#include "debug.hpp"
-#include "output.hpp"
-#include "core.hpp"
-#include "output-layout.hpp"
-#include "workspace-manager.hpp"
-#include "render-manager.hpp"
-#include "signal-definitions.hpp"
-#include "util.hpp"
+#include "wayfire/output.hpp"
+#include "wayfire/core.hpp"
+#include "wayfire/output-layout.hpp"
+#include "wayfire/workspace-manager.hpp"
+#include "wayfire/render-manager.hpp"
+#include "wayfire/signal-definitions.hpp"
+#include "wayfire/util.hpp"
 #include "../output/output-impl.hpp"
 #include <xf86drmMode.h>
 #include <sstream>
 #include <cstring>
 #include <unordered_set>
+
+#include <wayfire/util/log.hpp>
 
 extern "C"
 {
@@ -41,7 +42,7 @@ static wl_output_transform get_transform_from_string(std::string transform)
     else if (transform == "90_flipped") return WL_OUTPUT_TRANSFORM_FLIPPED_90;
     else if (transform == "270_flipped") return WL_OUTPUT_TRANSFORM_FLIPPED_270;
 
-    log_error ("Bad output transform in config: %s", transform.c_str());
+    LOGE("Bad output transform in config: ", transform);
     return WL_OUTPUT_TRANSFORM_NORMAL;
 }
 
@@ -62,9 +63,9 @@ std::pair<wlr_output_mode, bool> parse_output_mode(std::string modeline)
     return {mode, true};
 }
 
-std::pair<wf_point, bool> parse_output_layout(std::string layout)
+std::pair<wf::point_t, bool> parse_output_layout(std::string layout)
 {
-    wf_point pos;
+    wf::point_t pos;
     int read;
 
     if (layout.find("@") != layout.npos)
@@ -74,7 +75,7 @@ std::pair<wf_point, bool> parse_output_layout(std::string layout)
 
     if (read < 2)
     {
-        log_error("Detected invalid layout in config: %s", layout.c_str());
+        LOGE("Detected invalid layout in config: ", layout);
         return {{0, 0}, false};
     }
 
@@ -148,7 +149,7 @@ namespace wf
     {
         assert(from);
 
-        log_info("transfer views from %s -> %s", from->handle->name,
+        LOGI("transfer views from ", from->handle->name, " -> ",
             to ? to->handle->name : "null");
         /* first move each desktop view(e.g windows) to another output */
         std::vector<wayfire_view> views;
@@ -197,7 +198,7 @@ namespace wf
         /* A note: at this point, some views might already have been deleted */
     }
 
-    constexpr wf_point output_state_t::default_position;
+    constexpr wf::point_t output_state_t::default_position;
     bool output_state_t::operator == (const output_state_t& other) const
     {
         if (source == OUTPUT_IMAGE_SOURCE_NONE)
@@ -230,20 +231,46 @@ namespace wf
 
         std::unique_ptr<wf::output_t> output;
         wl_listener_wrapper on_destroy, on_mode;
-        wf_option mode_opt, position_opt, scale_opt, transform_opt;
+        std::shared_ptr<wf::config::option_base_t>
+            mode_opt, position_opt, scale_opt, transform_opt;
         const std::string default_value = "default";
+
+
+        void initialize_config_options()
+        {
+            std::string output_name = handle->name;
+            auto& config = wf::get_core().config;
+            if (!config.get_section(output_name))
+            {
+                config.merge_section(
+                    std::make_shared<wf::config::section_t> (output_name));
+            }
+
+            auto section = config.get_section(output_name);
+            auto add_if_missing = [&] (std::string name, std::string defval)
+            {
+                if (!section->get_option_or(name))
+                {
+                    section->register_new_option(std::make_shared<
+                        wf::config::option_t<std::string>> (name, defval));
+                }
+
+                auto opt = section->get_option(name);
+                opt->set_default_value_str(defval);
+                return opt;
+            };
+
+            mode_opt = add_if_missing("mode", default_value);
+            scale_opt = add_if_missing("scale", "1.0");
+            position_opt = add_if_missing("layout", default_value);
+            transform_opt = add_if_missing("transform", "normal");
+        }
 
         output_layout_output_t(wlr_output *handle)
         {
             this->handle = handle;
             on_destroy.connect(&handle->events.destroy);
-
-            auto output_section =
-                wf::get_core().config->get_section(handle->name);
-            mode_opt      = output_section->get_option("mode", default_value);
-            position_opt  = output_section->get_option("layout", default_value);
-            scale_opt     = output_section->get_option("scale", "1");
-            transform_opt = output_section->get_option("transform", "normal");
+            initialize_config_options();
 
             bool is_nested_compositor = wlr_output_is_wl(handle);
 
@@ -342,18 +369,18 @@ namespace wf
             wlr_output_mode mode;
             mode.width = -1;
 
-            if (mode_opt->as_string() != default_value &&
-                mode_opt->as_string() != "auto")
+            auto set_mode = mode_opt->get_value_str();
+            if (set_mode != "default" && set_mode != "auto")
             {
-                auto value = parse_output_mode(mode_opt->as_string());
+                auto value = parse_output_mode(set_mode);
                 if (value.second)
                 {
                     if (is_mode_supported(value.first)) {
                         mode = value.first;
                     } else {
-                        log_error("Output mode %s for output %s is not "
-                            " supported, try adding a custom mode.",
-                            mode_opt->as_string().c_str(), handle->name);
+                        LOGE("Output mode ", set_mode, " for output ",
+                            handle->name, " is not supported, ",
+                            " try adding a custom mode.");
                     }
                 }
             }
@@ -370,9 +397,10 @@ namespace wf
             output_state_t state;
 
             state.position = output_state_t::default_position;
-            if (position_opt->as_string() != default_value)
+            auto set_position = position_opt->get_value_str();
+            if (set_position != default_value)
             {
-                auto value = parse_output_layout(position_opt->as_string());
+                auto value = parse_output_layout(set_position);
                 if (value.second)
                     state.position = value.first;
             }
@@ -381,16 +409,17 @@ namespace wf
              * specified in the config */
             refresh_custom_modes();
 
-            if (mode_opt->as_string() == "off")
+            std::string set_mode = mode_opt->get_value_str();
+            if (set_mode == "off")
             {
                 state.source = OUTPUT_IMAGE_SOURCE_NONE;
                 return state;
             }
-            else if (mode_opt->as_string().find("mirror") == 0)
+            else if (set_mode.find("mirror") == 0)
             {
                 state.source = OUTPUT_IMAGE_SOURCE_MIRROR;
 
-                std::stringstream ss(mode_opt->as_string());
+                std::stringstream ss(set_mode);
                 ss >> state.mirror_from; // skip the mirror word
                 ss >> state.mirror_from;
 
@@ -402,15 +431,20 @@ namespace wf
                 state.mode = load_mode_from_config();
             }
 
-            state.scale = scale_opt->as_double();
-            if (state.scale <= 0)
+            auto set_scale = wf::option_type::from_string<double>(
+                scale_opt->get_value_str());
+            if (set_scale.value_or(-1) <= 0)
             {
-                log_error("Invalid scale for %s in config: %s", handle->name,
-                    scale_opt->as_string().c_str());
+                LOGE("Invalid scale for ", handle->name, " in config: ",
+                    scale_opt->get_value_str());
                 state.scale = 1;
+            } else
+            {
+                state.scale = set_scale.value();
             }
 
-            state.transform = get_transform_from_string(transform_opt->as_string());
+            state.transform = get_transform_from_string(
+                transform_opt->get_value_str());
             return state;
         }
 
@@ -440,7 +474,7 @@ namespace wf
             if (!this->output)
                 return;
 
-            log_info("disable output: %s", output->handle->name);
+            LOGE("disable output: ", output->handle->name);
             auto wo = output.get();
 
             if (get_core().get_active_output() == wo && !shutdown)
@@ -470,11 +504,11 @@ namespace wf
             drmModeModeInfo *mode = new drmModeModeInfo;
             if (!parse_modeline(modeline.c_str(), *mode))
             {
-                log_error("invalid modeline %s in config file", modeline.c_str());
+                LOGE("invalid modeline ", modeline, " in config file");
                 return;
             }
 
-            log_debug("output %s: adding custom mode %s", handle->name, mode->name);
+            LOGD("output ", handle->name, ": adding custom mode ", mode->name);
             if (wlr_output_is_drm(handle))
                 wlr_drm_connector_add_mode(handle, mode);
         }
@@ -482,11 +516,17 @@ namespace wf
         void refresh_custom_modes()
         {
             static const std::string custom_mode_prefix = "custom_mode";
-            auto section = get_core().config->get_section(handle->name);
-            for (auto& opt : section->options)
+            auto section = get_core().config.get_section(handle->name);
+            if (!section)
+                return;
+
+            for (auto& opt : section->get_registered_options())
             {
-                if (custom_mode_prefix == opt->name.substr(0, custom_mode_prefix.length()))
-                    add_custom_mode(opt->as_string());
+                if (custom_mode_prefix ==
+                    opt->get_name().substr(0, custom_mode_prefix.length()))
+                {
+                    add_custom_mode(opt->get_value_str());
+                }
             }
         }
 
@@ -513,7 +553,11 @@ namespace wf
                 if (handle->current_mode->width == mode.width &&
                     handle->current_mode->height == mode.height &&
                     handle->current_mode->refresh == mode.refresh)
+                {
+                    /* Commit the enabling of the output */
+                    wlr_output_commit(handle);
                     return;
+                }
             }
 
             refresh_custom_modes();
@@ -523,14 +567,16 @@ namespace wf
                 wlr_output_set_mode(handle, built_in);
             } else
             {
-                log_info("Couldn't find matching mode %dx%d@%f for output %s."
-                    "Trying to use custom mode (might not work).",
-                    mode.width, mode.height, mode.refresh / 1000.0, handle->name);
+                LOGI("Couldn't find matching mode ",
+                    mode.width, "x", mode.height, "@", mode.refresh / 1000.0,
+                    " for output ", handle->name, ". Trying to use custom mode",
+                    "(might not work)");
+
                 wlr_output_set_custom_mode(handle, mode.width, mode.height,
                     mode.refresh);
             }
 
-            return;
+            wlr_output_commit(handle);
         }
 
         /* Mirroring implementation */
@@ -565,15 +611,14 @@ namespace wf
                 current_state.mirror_from);
             if (!wo)
             {
-                log_error("Cannot find mirrored output %s.",
-                    current_state.mirror_from.c_str());
+                LOGE("Cannot find mirrored output ", current_state.mirror_from);
                 return;
             }
 
             wlr_dmabuf_attributes attributes;
             if (!wlr_output_export_dmabuf(wo->handle, &attributes))
             {
-                log_error("Failed reading mirrored output contents");
+                LOGE("Failed reading mirrored output contents");
                 return;
             }
 
@@ -585,6 +630,16 @@ namespace wf
 
             wlr_texture_destroy(texture);
             wlr_dmabuf_attributes_finish(&attributes);
+        }
+
+        void set_enabled(bool enabled)
+        {
+            if (wlr_output_is_noop(handle))
+                return;
+
+            wlr_output_enable(handle, enabled);
+            if (!enabled)
+                wlr_output_commit(handle);
         }
 
         void setup_mirror()
@@ -608,10 +663,9 @@ namespace wf
             {
                 /* If we mirror from a DPMS or an OFF output, we should turn
                  * off this output as well */
-                wlr_output_enable(handle, false);
-
-                log_info("%s: Cannot mirror from output %s. Disabling output.",
-                    handle->name, current_state.mirror_from.c_str());
+                set_enabled(false);
+                LOGI(handle->name, ": Cannot mirror from output ",
+                    current_state.mirror_from, ". Disabling output.");
                 return;
             }
 
@@ -650,7 +704,7 @@ namespace wf
             if (state.source & OUTPUT_IMAGE_SOURCE_NONE)
             {
                 /* DPMS or OFF */
-                wlr_output_enable(handle, false);
+                set_enabled(false);
                 if (state.source == OUTPUT_IMAGE_SOURCE_NONE)
                 {
                     /* OFF */
@@ -661,7 +715,7 @@ namespace wf
             else
             {
                 /* SELF or MIRROR */
-                wlr_output_enable(handle, true);
+                set_enabled(true);
             }
 
             apply_mode(state.mode);
@@ -672,6 +726,8 @@ namespace wf
 
                 if (handle->scale != state.scale)
                     wlr_output_set_scale(handle, state.scale);
+
+                wlr_output_commit(handle);
 
                 ensure_wayfire_output();
                 output->render->damage_whole();
@@ -729,6 +785,7 @@ namespace wf
             get_core().connect_signal("shutdown", &on_shutdown);
 
             noop_backend = wlr_noop_backend_create(get_core().display);
+            wlr_backend_start(noop_backend);
             /* The noop output will be typically destroyed on the first
              * plugged monitor, however we need to create it here so that we
              * support booting with 0 monitors */
@@ -767,7 +824,7 @@ namespace wf
             {
                 if (!this->outputs.count(head->state.output))
                 {
-                    log_error("Output configuration request contains unknown"
+                    LOGE("Output configuration request contains unknown",
                         " output, probably a compositor bug!");
                     continue;
                 }
@@ -807,7 +864,7 @@ namespace wf
 
         void ensure_noop_output()
         {
-            log_info("new output: NOOP-1");
+            LOGI("new output: NOOP-1");
 
             if (!noop_output)
             {
@@ -831,7 +888,7 @@ namespace wf
             if (noop_output->current_state.source == OUTPUT_IMAGE_SOURCE_NONE)
                 return;
 
-            log_info("remove output: NOOP-1");
+            LOGI("remove output: NOOP-1");
 
             output_state_t state;
             state.source = OUTPUT_IMAGE_SOURCE_NONE;
@@ -841,7 +898,7 @@ namespace wf
 
         void add_output(wlr_output *output)
         {
-            log_info("new output: %s", output->name);
+            LOGI("new output: ", output->name);
 
             auto lo = new output_layout_output_t(output);
             outputs[output] = std::unique_ptr<output_layout_output_t>(lo);
@@ -855,7 +912,7 @@ namespace wf
         void remove_output(wlr_output *to_remove)
         {
             auto active_outputs = get_outputs();
-            log_info("remove output: %s", to_remove->name);
+            LOGI("remove output: ", to_remove->name);
 
             /* Unset mode, plus destroy the wayfire output */
             auto configuration = get_current_configuration();
@@ -1113,7 +1170,7 @@ namespace wf
             }
         }
 
-        wf::output_t *get_output_coords_at(const wf_pointf& origin, wf_pointf& closest)
+        wf::output_t *get_output_coords_at(const wf::pointf_t& origin, wf::pointf_t& closest)
         {
             wlr_output_layout_closest_point(output_layout, NULL,
                 origin.x, origin.y, &closest.x, &closest.y);
@@ -1132,7 +1189,7 @@ namespace wf
 
         wf::output_t *get_output_at(int x, int y)
         {
-            wf_pointf dummy;
+            wf::pointf_t dummy;
             return get_output_coords_at({1.0 * x, 1.0 * y}, dummy);
         }
 
@@ -1154,7 +1211,7 @@ namespace wf
     { return pimpl->get_handle(); }
     wf::output_t *output_layout_t::get_output_at(int x, int y)
     { return pimpl->get_output_at(x, y); }
-    wf::output_t *output_layout_t::get_output_coords_at(wf_pointf origin, wf_pointf& closest)
+    wf::output_t *output_layout_t::get_output_coords_at(wf::pointf_t origin, wf::pointf_t& closest)
     { return pimpl->get_output_coords_at(origin, closest); }
     size_t output_layout_t::get_num_outputs()
     { return pimpl->get_num_outputs(); }

@@ -1,8 +1,8 @@
-#include <plugin.hpp>
-#include "view.hpp"
-#include "view-transform.hpp"
-#include "output.hpp"
-#include "core.hpp"
+#include <wayfire/plugin.hpp>
+#include "wayfire/view.hpp"
+#include "wayfire/view-transform.hpp"
+#include "wayfire/output.hpp"
+#include "wayfire/core.hpp"
 #include <linux/input.h>
 
 static double cross (double x1, double y1, double x2, double y2) // cross product
@@ -17,13 +17,13 @@ static double vlen(double x1, double y1) // length of vector centered at the ori
 
 class wf_wrot : public wf::plugin_interface_t
 {
-    button_callback call;
+    wf::button_callback call;
 
     int last_x, last_y;
     wayfire_view current_view;
 
     public:
-        void init(wayfire_config *config)
+        void init() override
         {
             grab_interface->name = "wrot";
             grab_interface->capabilities = wf::CAPABILITY_GRAB_INPUT;
@@ -31,13 +31,13 @@ class wf_wrot : public wf::plugin_interface_t
             call = [=] (uint32_t, int x, int y)
             {
                 if (!output->activate_plugin(grab_interface))
-                    return;
+                    return false;
 
                 current_view = wf::get_core().get_cursor_focus_view();
                 if (!current_view || current_view->role != wf::VIEW_ROLE_TOPLEVEL)
                 {
                     output->deactivate_plugin(grab_interface);
-                    return;
+                    return false;
                 }
 
                 output->focus_view(current_view, true);
@@ -45,17 +45,19 @@ class wf_wrot : public wf::plugin_interface_t
 
                 last_x = x;
                 last_y = y;
+
+                return true;
             };
 
-            auto button = (*config)["wrot"]->get_option("activate", "<alt> BTN_RIGHT");
-            output->add_button(button, &call);
+            output->add_button(
+                wf::option_wrapper_t<wf::buttonbinding_t>("wrot/activate"), &call);
 
             grab_interface->callbacks.pointer.motion = [=] (int x, int y)
             {
                 if (!current_view->get_transformer("wrot"))
-                    current_view->add_transformer(std::make_unique<wf_2D_view> (current_view), "wrot");
+                    current_view->add_transformer(std::make_unique<wf::view_2D> (current_view), "wrot");
 
-                auto tr = dynamic_cast<wf_2D_view*> (current_view->get_transformer("wrot").get());
+                auto tr = dynamic_cast<wf::view_2D*> (current_view->get_transformer("wrot").get());
                 assert(tr);
 
                 current_view->damage();
@@ -99,7 +101,7 @@ class wf_wrot : public wf::plugin_interface_t
             output->deactivate_plugin(grab_interface);
         }
 
-        void fini()
+        void fini() override
         {
             if (grab_interface->is_grabbed())
                 input_released();

@@ -1,14 +1,15 @@
-#include "debug.hpp"
+#include "wayfire/debug.hpp"
 #include "output-impl.hpp"
-#include "view.hpp"
+#include "wayfire/view.hpp"
 #include "../core/core-impl.hpp"
-#include "signal-definitions.hpp"
-#include "render-manager.hpp"
-#include "output-layout.hpp"
-#include "workspace-manager.hpp"
-#include "compositor-view.hpp"
+#include "wayfire/signal-definitions.hpp"
+#include "wayfire/render-manager.hpp"
+#include "wayfire/output-layout.hpp"
+#include "wayfire/workspace-manager.hpp"
+#include "wayfire/compositor-view.hpp"
 #include "wayfire-shell.hpp"
 #include "../core/seat/input-manager.hpp"
+#include <wayfire/util/log.hpp>
 
 #include <linux/input.h>
 extern "C"
@@ -18,7 +19,6 @@ extern "C"
 
 #include <algorithm>
 #include <assert.h>
-#include <config.hpp>
 
 wf::output_t::output_t(wlr_output *handle)
 {
@@ -30,7 +30,7 @@ wf::output_t::output_t(wlr_output *handle)
 wf::output_impl_t::output_impl_t(wlr_output *handle)
     : output_t(handle)
 {
-    plugin = std::make_unique<plugin_manager> (this, wf::get_core().config);
+    plugin = std::make_unique<plugin_manager> (this);
     view_disappeared_cb = [=] (wf::signal_data_t *data) {
         output_t::refocus(get_signaled_view(data));
     };
@@ -73,7 +73,7 @@ void wf::output_t::refocus(wayfire_view skip_view)
     if (views.empty())
     {
         if (wf::get_core().get_active_output() == this) {
-            log_debug("warning: no focused views in the focused layer, probably a bug");
+            LOGD("warning: no focused views in the focused layer, probably a bug");
         }
 
         /* Usually, we focus a layer so that a particular view has focus, i.e
@@ -93,30 +93,30 @@ wf::output_t::~output_t()
 }
 wf::output_impl_t::~output_impl_t() { }
 
-wf_size_t wf::output_t::get_screen_size() const
+wf::dimensions_t wf::output_t::get_screen_size() const
 {
     int w, h;
     wlr_output_effective_resolution(handle, &w, &h);
     return {w, h};
 }
 
-wf_geometry wf::output_t::get_relative_geometry() const
+wf::geometry_t wf::output_t::get_relative_geometry() const
 {
-    wf_geometry g;
+    wf::geometry_t g;
     g.x = g.y = 0;
     wlr_output_effective_resolution(handle, &g.width, &g.height);
 
     return g;
 }
 
-wf_geometry wf::output_t::get_layout_geometry() const
+wf::geometry_t wf::output_t::get_layout_geometry() const
 {
     auto box = wlr_output_layout_get_box(
         wf::get_core().output_layout->get_handle(), handle);
     if (box) {
         return *box;
     } else {
-        log_error("Get layout geometry for an invalid output!");
+        LOGE("Get layout geometry for an invalid output!");
         return {0, 0, 1, 1};
     }
 }
@@ -144,7 +144,7 @@ void wf::output_t::ensure_pointer() const
     } */
 }
 
-wf_pointf wf::output_t::get_cursor_position() const
+wf::pointf_t wf::output_t::get_cursor_position() const
 {
     auto og = get_layout_geometry();
     auto gc = wf::get_core().get_cursor_position();
@@ -157,7 +157,7 @@ bool wf::output_t::ensure_visible(wayfire_view v)
     auto g = this->get_relative_geometry();
 
     /* Compute the percentage of the view which is visible */
-    auto intersection = wf_geometry_intersection(bbox, g);
+    auto intersection = wf::geometry_intersection(bbox, g);
     double area = 1.0 * intersection.width * intersection.height;
     area /= 1.0 * bbox.width * bbox.height;
 
@@ -176,7 +176,7 @@ bool wf::output_t::ensure_visible(wayfire_view v)
 
     data.carried_out = false;
     data.old_viewport = cws;
-    data.new_viewport = cws + wf_point{dvx, dvy};
+    data.new_viewport = cws + wf::point_t{dvx, dvy};
 
     emit_signal("set-workspace-request", &data);
     if (!data.carried_out)
@@ -200,7 +200,7 @@ void wf::output_impl_t::focus_view(wayfire_view v, bool raise)
         if (active_view && active_view->get_app_id().find("$unfocus") == 0)
             return focus_view(nullptr, false);
 
-        log_debug("Denying focus request for a view from a lower layer than the"
+        LOGD("Denying focus request for a view from a lower layer than the"
             " focused layer");
         return;
     }
@@ -242,24 +242,17 @@ wayfire_view wf::output_impl_t::get_active_view() const
     return active_view;
 }
 
-bool wf::output_impl_t::activate_plugin(const plugin_grab_interface_uptr& owner,
+bool wf::output_impl_t::can_activate_plugin(const plugin_grab_interface_uptr& owner,
     bool ignore_inhibit)
 {
     if (!owner)
-        return false;
-
-    if (wf::get_core().get_active_output() != this)
         return false;
 
     if (this->inhibited && !ignore_inhibit)
         return false;
 
     if (active_plugins.find(owner.get()) != active_plugins.end())
-    {
-        log_debug("output %s: activate plugin %s again", handle->name, owner->name.c_str());
-        active_plugins.insert(owner.get());
         return true;
-    }
 
     for(auto act_owner : active_plugins)
     {
@@ -269,8 +262,23 @@ bool wf::output_impl_t::activate_plugin(const plugin_grab_interface_uptr& owner,
             return false;
     }
 
+    return true;
+}
+
+bool wf::output_impl_t::activate_plugin(const plugin_grab_interface_uptr& owner,
+    bool ignore_inhibit)
+{
+    if (!can_activate_plugin(owner, ignore_inhibit))
+        return false;
+
+    if (active_plugins.find(owner.get()) != active_plugins.end()) {
+        LOGD("output ", handle->name,
+            ": activate plugin ", owner->name, " again");
+    } else {
+        LOGD("output ", handle->name, ": activate plugin ", owner->name);
+    }
+
     active_plugins.insert(owner.get());
-    log_debug("output %s: activate plugin %s", handle->name, owner->name.c_str());
     return true;
 }
 
@@ -282,7 +290,7 @@ bool wf::output_impl_t::deactivate_plugin(
         return true;
 
     active_plugins.erase(it);
-    log_debug("output %s: deactivate plugin %s", handle->name, owner->name.c_str());
+    LOGD("output ", handle->name, ": deactivate plugin ", owner->name);
 
     if (active_plugins.count(owner.get()) == 0)
     {
@@ -338,44 +346,43 @@ bool wf::output_impl_t::is_inhibited() const
 }
 
 /* simple wrappers for wf::get_core_impl().input, as it isn't exposed to plugins */
-
-wf_binding *wf::output_t::add_key(wf_option key, key_callback *callback)
+wf::binding_t *wf::output_t::add_key(option_sptr_t<keybinding_t> key, wf::key_callback *callback)
 {
     return wf::get_core_impl().input->new_binding(WF_BINDING_KEY, key, this, callback);
 }
 
-wf_binding *wf::output_t::add_axis(wf_option axis, axis_callback *callback)
+wf::binding_t *wf::output_t::add_axis(option_sptr_t<keybinding_t> axis, wf::axis_callback *callback)
 {
     return wf::get_core_impl().input->new_binding(WF_BINDING_AXIS, axis, this, callback);
 }
 
-wf_binding *wf::output_t::add_touch(wf_option mod, touch_callback *callback)
+wf::binding_t *wf::output_t::add_touch(option_sptr_t<keybinding_t> mod, wf::touch_callback *callback)
 {
     return wf::get_core_impl().input->new_binding(WF_BINDING_TOUCH, mod, this, callback);
 }
 
-wf_binding *wf::output_t::add_button(wf_option button,
-    button_callback *callback)
+wf::binding_t *wf::output_t::add_button(option_sptr_t<buttonbinding_t> button,
+        wf::button_callback *callback)
 {
     return wf::get_core_impl().input->new_binding(WF_BINDING_BUTTON, button,
         this, callback);
 }
 
-wf_binding *wf::output_t::add_gesture(wf_option gesture,
-    gesture_callback *callback)
+wf::binding_t *wf::output_t::add_gesture(option_sptr_t<touchgesture_t> gesture,
+        wf::gesture_callback *callback)
 {
     return wf::get_core_impl().input->new_binding(WF_BINDING_GESTURE, gesture,
         this, callback);
 }
 
-wf_binding *wf::output_t::add_activator(wf_option activator,
-    activator_callback *callback)
+wf::binding_t *wf::output_t::add_activator(
+    option_sptr_t<activatorbinding_t> activator, wf::activator_callback *callback)
 {
     return wf::get_core_impl().input->new_binding(WF_BINDING_ACTIVATOR, activator,
         this, callback);
 }
 
-void wf::output_t::rem_binding(wf_binding *binding)
+void wf::output_t::rem_binding(wf::binding_t *binding)
 {
     wf::get_core_impl().input->rem_binding(binding);
 }

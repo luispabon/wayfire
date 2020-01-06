@@ -3,6 +3,6 @@ tile = shared_module('simple-tile',
         include_directories: [wayfire_api_inc, wayfire_conf_inc],
         dependencies: [wlroots, pixman, wfconfig],
         install: true,
-        install_dir: 'lib/wayfire/')
+        install_dir: join_paths(get_option('libdir'), 'wayfire'))
 
 

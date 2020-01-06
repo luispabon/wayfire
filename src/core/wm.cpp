@@ -1,28 +1,31 @@
 #include "wm.hpp"
-#include "output.hpp"
-#include "view.hpp"
-#include "debug.hpp"
-#include "core.hpp"
-#include "workspace-manager.hpp"
+#include "wayfire/output.hpp"
+#include "wayfire/view.hpp"
+#include "wayfire/debug.hpp"
+#include "wayfire/core.hpp"
+#include "wayfire/workspace-manager.hpp"
 
 #include "../view/xdg-shell.hpp"
 #include "../output/output-impl.hpp"
-#include "signal-definitions.hpp"
+#include "wayfire/signal-definitions.hpp"
 
-void wayfire_exit::init(wayfire_config*)
+void wayfire_exit::init()
 {
     key = [](uint32_t key)
     {
         auto output_impl =
             static_cast<wf::output_impl_t*> (wf::get_core().get_active_output());
         if (output_impl->is_inhibited())
-            return;
+            return false;
 
         wf::get_core().emit_signal("shutdown", nullptr);
         wl_display_terminate(wf::get_core().display);
+
+        return true;
     };
 
-    output->add_key(new_static_option("<ctrl> <alt> KEY_BACKSPACE"), &key);
+    output->add_key(wf::create_option_string<wf::keybinding_t>(
+            "<ctrl> <alt> KEY_BACKSPACE"), &key);
 }
 
 void wayfire_exit::fini()
@@ -30,20 +33,20 @@ void wayfire_exit::fini()
     output->rem_binding(&key);
 }
 
-void wayfire_close::init(wayfire_config *config)
+void wayfire_close::init()
 {
     grab_interface->capabilities = wf::CAPABILITY_GRAB_INPUT;
-    auto key = config->get_section("core")
-        ->get_option("close_top_view", "<super> KEY_Q | <alt> KEY_FN_F4");
-
-    callback = [=] (wf_activator_source, uint32_t)
+    wf::option_wrapper_t<wf::activatorbinding_t> key("core/close_top_view");
+    callback = [=] (wf::activator_source_t, uint32_t)
     {
         if (!output->activate_plugin(grab_interface))
-            return;
+            return false;
 
         output->deactivate_plugin(grab_interface);
         auto view = output->get_active_view();
         if (view && view->role == wf::VIEW_ROLE_TOPLEVEL) view->close();
+
+        return true;
     };
 
     output->add_activator(key, &callback);
@@ -54,7 +57,7 @@ void wayfire_close::fini()
     output->rem_binding(&callback);
 }
 
-void wayfire_focus::init(wayfire_config *)
+void wayfire_focus::init()
 {
     grab_interface->name = "_wf_focus";
     grab_interface->capabilities = wf::CAPABILITY_MANAGE_DESKTOP;
@@ -67,13 +70,16 @@ void wayfire_focus::init(wayfire_config *)
 
     on_button = [=] (uint32_t button, int x, int y) {
         this->check_focus_surface(wf::get_core().get_cursor_focus());
+        return true;
     };
-    output->add_button(new_static_option("BTN_LEFT"), &on_button);
+    output->add_button(
+        wf::create_option_string<wf::buttonbinding_t>("BTN_LEFT"), &on_button);
 
     on_touch = [=] (int x, int y) {
         this->check_focus_surface(wf::get_core().get_touch_focus());
+        return true;
     };
-    output->add_touch(new_static_option(""), &on_touch);
+    output->add_touch(wf::create_option<wf::keybinding_t>({0, 0}), &on_touch);
 
     on_view_disappear = [=] (wf::signal_data_t *data) {
         set_last_focus(nullptr);
@@ -179,7 +185,7 @@ static std::vector<wayfire_view> enumerate_views(wayfire_view root)
     return views;
 }
 
-void wayfire_handle_focus_parent::init(wayfire_config*)
+void wayfire_handle_focus_parent::init()
 {
     focus_event = [&] (wf::signal_data_t *data) mutable
     {
@@ -188,15 +194,13 @@ void wayfire_handle_focus_parent::init(wayfire_config*)
             return;
 
         auto root = view;
-        while(root->parent)
+        while(root->parent && root->parent->is_mapped())
             root = root->parent;
 
         auto views = enumerate_views(root);
         /* Already focused the view, no need to restack */
         if (views.front() == view)
             return;
-
-        log_info("frontmost is %s want %s", views.front()->get_title().c_str(), view->get_title().c_str());
 
         /* Delay focus a bit because we do not want to mess with other output
          * focus handlers. However, we need to be careful, because the view

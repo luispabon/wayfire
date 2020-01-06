@@ -1,8 +1,10 @@
 #include "matcher-ast.hpp"
-#include <debug.hpp>
+#include <wayfire/debug.hpp>
 
 #include <map>
+#include <set>
 #include <regex>
+#include <wayfire/util/log.hpp>
 
 namespace wf
 {
@@ -71,7 +73,7 @@ namespace wf
                 try {
                     result = std::regex_match(text, std::regex(pattern));
                 } catch (const std::exception& e) {
-                    log_error ("Invalid regular expression: %s", pattern.c_str());
+                    LOGE ("Invalid regular expression: %s", pattern.c_str());
                 }
 
                 return result;
@@ -263,8 +265,18 @@ namespace wf
         {
             any_expression_t(string expression)
             {
-                if (util::trim(expression) != "any")
-                    throw std::invalid_argument("Expression isn't \"any\"");
+                auto trimmed = util::trim(expression);
+                const std::set<string> valid_values = {
+                    "any",
+                    "1",
+                    "all",
+                };
+
+                if (valid_values.count(trimmed) == 0)
+                {
+                    throw std::invalid_argument(
+                        "Expression isn't \"any\", \"1\", or \"all\"");
+                }
             }
 
             bool evaluate(const view_t& view) override
@@ -277,8 +289,16 @@ namespace wf
         {
             none_expression_t(string expression)
             {
-                if (util::trim(expression) != "none")
+                auto trimmed = util::trim(expression);
+                const std::set<string> valid_values = {
+                    "none",
+                    "0",
+                };
+
+                if (valid_values.count(trimmed) == 0)
+                {
                     throw std::invalid_argument("Expression isn't \"none\"");
+                }
             }
 
             bool evaluate(const view_t& view) override

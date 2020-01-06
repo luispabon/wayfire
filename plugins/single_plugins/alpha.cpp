@@ -1,18 +1,18 @@
 /*
  * The MIT License (MIT)
- * 
+ *
  * Copyright (c) 2018 Scott Moreau
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -22,40 +22,37 @@
  * SOFTWARE.
  */
 
-#include <core.hpp>
-#include <view.hpp>
-#include <plugin.hpp>
-#include <output.hpp>
-#include "view-transform.hpp"
-#include "workspace-manager.hpp"
+#include <wayfire/core.hpp>
+#include <wayfire/view.hpp>
+#include <wayfire/plugin.hpp>
+#include <wayfire/output.hpp>
+#include "wayfire/view-transform.hpp"
+#include "wayfire/workspace-manager.hpp"
 
 class wayfire_alpha : public wf::plugin_interface_t
 {
-    wf_option modifier, min_value;
+    wf::option_wrapper_t<wf::keybinding_t> modifier{"alpha/modifier"};
+    wf::option_wrapper_t<double> min_value{"alpha/min_value"};
 
     public:
-    void init(wayfire_config *config)
+    void init() override
     {
         grab_interface->name = "alpha";
         grab_interface->capabilities = wf::CAPABILITY_MANAGE_DESKTOP;
 
-        auto section = config->get_section("alpha");
-        modifier = section->get_option("modifier", "<alt>");
-        min_value = section->get_option("min_value", "0.1");
-
-        min_value->add_updated_handler(&min_value_changed);
+        min_value.set_callback(min_value_changed);
         output->add_axis(modifier, &axis_cb);
     }
 
     void update_alpha(wayfire_view view, float delta)
     {
-        wf_2D_view *transformer;
+        wf::view_2D *transformer;
         float alpha;
 
         if (!view->get_transformer("alpha"))
-            view->add_transformer(std::make_unique<wf_2D_view> (view), "alpha");
+            view->add_transformer(std::make_unique<wf::view_2D> (view), "alpha");
 
-        transformer = dynamic_cast<wf_2D_view*> (view->get_transformer("alpha").get());
+        transformer = dynamic_cast<wf::view_2D*> (view->get_transformer("alpha").get());
         alpha = transformer->alpha;
 
         alpha -= delta * 0.003;
@@ -66,9 +63,7 @@ class wayfire_alpha : public wf::plugin_interface_t
         if (alpha == 1.0)
             return view->pop_transformer("alpha");
 
-        if (alpha < min_value->as_double())
-            alpha = min_value->as_double();
-
+        alpha = std::max(alpha, (float)min_value);
         if (transformer->alpha != alpha)
         {
             transformer->alpha = alpha;
@@ -76,45 +71,49 @@ class wayfire_alpha : public wf::plugin_interface_t
         }
     }
 
-    axis_callback axis_cb = [=] (wlr_event_pointer_axis* ev)
+    wf::axis_callback axis_cb = [=] (wlr_event_pointer_axis* ev)
     {
         if (!output->activate_plugin(grab_interface))
-            return;
+            return false;
 
         output->deactivate_plugin(grab_interface);
 
         auto view = wf::get_core().get_cursor_focus_view();
         if (!view)
-            return;
+            return false;
 
         auto layer = output->workspace->get_view_layer(view);
 
         if (layer == wf::LAYER_BACKGROUND)
-            return;
+            return false;
 
-        if (ev->orientation == WLR_AXIS_ORIENTATION_VERTICAL)
+        if (ev->orientation == WLR_AXIS_ORIENTATION_VERTICAL) {
             update_alpha(view, ev->delta);
+            return true;
+        }
+
+        return false;
     };
 
-    wf_option_callback min_value_changed = [=] ()
+    wf::config::option_base_t::updated_callback_t min_value_changed = [=] ()
     {
         for (auto& view : output->workspace->get_views_in_layer(wf::ALL_LAYERS))
         {
             if (!view->get_transformer("alpha"))
                 continue;
 
-            wf_2D_view *transformer = dynamic_cast<wf_2D_view*> (view->get_transformer("alpha").get());
+            wf::view_2D *transformer = dynamic_cast<wf::view_2D*> (view->get_transformer("alpha").get());
 
-            if (transformer->alpha < min_value->as_double())
+            if (transformer->alpha < min_value)
             {
-                transformer->alpha = min_value->as_double();
+                transformer->alpha = min_value;
                 view->damage();
             }
 
         }
     };
 
-    void fini()
+    void fini() override
     {
         for (auto& view : output->workspace->get_views_in_layer(wf::ALL_LAYERS))
         {
@@ -122,7 +121,6 @@ class wayfire_alpha : public wf::plugin_interface_t
                 view->pop_transformer("alpha");
         }
 
-        min_value->rem_updated_handler(&min_value_changed);
         output->rem_binding(&axis_cb);
     }
 };

@@ -2,10 +2,10 @@
 #define WF_SEAT_POINTER_HPP
 
 #include <cmath>
-#include <nonstd/observer_ptr.h>
-#include <surface.hpp>
-#include <util.hpp>
-#include <config.hpp>
+#include <wayfire/nonstd/observer_ptr.h>
+#include <wayfire/surface.hpp>
+#include <wayfire/util.hpp>
+#include <wayfire/option-wrapper.hpp>
 #include "surface-map-state.hpp"
 
 extern "C"
@@ -60,7 +60,7 @@ class LogicalPointer
      * @param point The point to be constrained inside the region.
      * @return The closest point
      */
-    wf_pointf constrain_point(wf_pointf point);
+    wf::pointf_t constrain_point(wf::pointf_t point);
 
     /** @return The currently active pointer constraint */
     wlr_pointer_constraint_v1 *get_active_pointer_constraint();
@@ -100,7 +100,7 @@ class LogicalPointer
      * @param local   The coordinates of the pointer relative to surface.
      *                No meaning if the surface is nullptr
      */
-    void update_cursor_focus(wf::surface_interface_t *surface, wf_pointf local);
+    void update_cursor_focus(wf::surface_interface_t *surface, wf::pointf_t local);
 
     /**
      * Handle an update of the cursor's position, which includes updating the
@@ -114,15 +114,12 @@ class LogicalPointer
 
     /** Number of currently-pressed mouse buttons */
     int count_pressed_buttons = 0;
-    wf_region constraint_region;
+    wf::region_t constraint_region;
     wlr_pointer_constraint_v1 *active_pointer_constraint = nullptr;
 
     /** Figure out the global position of the given point.
      * @param relative The point relative to the cursor focus */
-    wf_pointf get_absolute_position_from_relative(wf_pointf relative);
-
-    wf_option mouse_scroll_speed;
-    wf_option touchpad_scroll_speed;
+    wf::pointf_t get_absolute_position_from_relative(wf::pointf_t relative);
 
     /** Check whether an implicit grab should start/end */
     void check_implicit_grab();
@@ -145,7 +142,7 @@ class LogicalPointer
      * @param local The coordinates of the cursor relative to the current
      * focus
      */
-    void send_motion(uint32_t time_msec, wf_pointf local);
+    void send_motion(uint32_t time_msec, wf::pointf_t local);
 
 };
 }

@@ -57,6 +57,9 @@ touchpad_cursor_speed = 0
 mouse_scroll_speed = 1
 touchpad_scroll_speed = 1
 
+mouse_accel_profile = default    # none | adaptive | flat
+touchpad_accel_profile = default # none | adaptive | flat
+
 natural_scroll = 1
 tap_to_click = 1
 click_method = default  # none | button-areas | clickfinger

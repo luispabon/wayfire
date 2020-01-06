@@ -1,6 +1,8 @@
-#include "util.hpp"
-#include <debug.hpp>
-#include <core.hpp>
+#include "wayfire/util.hpp"
+#include <wayfire/debug.hpp>
+#include <wayfire/core.hpp>
+#include <sstream>
+#include <iomanip>
 #include <ctime>
 #include <cmath>
 
@@ -10,42 +12,62 @@ extern "C"
 }
 
 /* Geometry helpers */
-bool operator == (const wf_point& a, const wf_point& b)
+std::ostream& operator << (std::ostream& stream, const wf::geometry_t& geometry)
+{
+    stream << '(' << geometry.x << ',' << geometry.y
+        << ' ' << geometry.width << 'x' << geometry.height << ')';
+    return stream;
+}
+
+std::ostream& operator << (std::ostream& stream, const wf::point_t& point)
+{
+    stream << '(' << point.x << ',' << point.y << ')';
+    return stream;
+}
+
+std::ostream& operator << (std::ostream& stream, const wf::pointf_t& pointf)
+{
+    stream << std::fixed << std::setprecision(4) <<
+        '(' << pointf.x << ',' << pointf.y << ')';
+    return stream;
+}
+
+bool operator == (const wf::point_t& a, const wf::point_t& b)
 {
     return a.x == b.x && a.y == b.y;
 }
 
-bool operator != (const wf_point& a, const wf_point& b)
+bool operator != (const wf::point_t& a, const wf::point_t& b)
 {
     return !(a == b);
 }
 
-bool operator == (const wf_geometry& a, const wf_geometry& b)
+bool operator == (const wf::geometry_t& a, const wf::geometry_t& b)
 {
     return a.x == b.x && a.y == b.y && a.width == b.width && a.height == b.height;
 }
 
-bool operator != (const wf_geometry& a, const wf_geometry& b)
+bool operator != (const wf::geometry_t& a, const wf::geometry_t& b)
 {
     return !(a == b);
 }
 
-wf_point operator + (const wf_point& a, const wf_point& b)
+wf::point_t operator + (const wf::point_t& a, const wf::point_t& b)
 {
     return {a.x + b.x, a.y + b.y};
 }
 
-wf_point operator - (const wf_point& a, const wf_point& b)
+wf::point_t operator - (const wf::point_t& a, const wf::point_t& b)
 {
     return {a.x - b.x, a.y - b.y};
 }
 
-wf_point operator + (const wf_point& a, const wf_geometry& b)
+wf::point_t operator + (const wf::point_t& a, const wf::geometry_t& b)
 {
     return {a.x + b.x, a.y + b.y};
 }
 
-wf_geometry operator + (const wf_geometry &a, const wf_point& b)
+wf::geometry_t operator + (const wf::geometry_t &a, const wf::point_t& b)
 {
     return {
         a.x + b.x,
@@ -55,34 +77,34 @@ wf_geometry operator + (const wf_geometry &a, const wf_point& b)
     };
 }
 
-wf_point operator - (const wf_point& a)
+wf::point_t operator - (const wf::point_t& a)
 {
     return {-a.x, -a.y};
 }
 
-double abs(const wf_point& p)
+double abs(const wf::point_t& p)
 {
     return std::sqrt(p.x * p.x + p.y * p.y);
 }
 
-bool operator & (const wf_geometry& rect, const wf_point& point)
+bool operator & (const wf::geometry_t& rect, const wf::point_t& point)
 {
     return wlr_box_contains_point(&rect, point.x, point.y);
 }
 
-bool operator & (const wf_geometry& rect, const wf_pointf& point)
+bool operator & (const wf::geometry_t& rect, const wf::pointf_t& point)
 {
     return wlr_box_contains_point(&rect, point.x, point.y);
 }
 
-bool operator & (const wf_geometry& r1, const wf_geometry& r2)
+bool operator & (const wf::geometry_t& r1, const wf::geometry_t& r2)
 {
     wlr_box result;
     return wlr_box_intersection(&result, &r1, &r2);
 }
 
-wf_geometry wf_geometry_intersection(const wf_geometry& r1,
-    const wf_geometry& r2)
+wf::geometry_t wf::geometry_intersection(const wf::geometry_t& r1,
+    const wf::geometry_t& r2)
 {
     wlr_box result;
     if (wlr_box_intersection(&result, &r1, &r2))
@@ -110,37 +132,37 @@ pixman_box32_t pixman_box_from_wlr_box(const wlr_box& box)
     };
 }
 
-wf_region::wf_region()
+wf::region_t::region_t()
 {
     pixman_region32_init(&_region);
 }
 
-wf_region::wf_region(pixman_region32_t *region) : wf_region()
+wf::region_t::region_t(pixman_region32_t *region) : wf::region_t()
 {
     pixman_region32_copy(this->to_pixman(), region);
 }
 
-wf_region::wf_region(const wlr_box& box)
+wf::region_t::region_t(const wlr_box& box)
 {
     pixman_region32_init_rect(&_region, box.x, box.y, box.width, box.height);
 }
 
-wf_region:: ~wf_region()
+wf::region_t::~region_t()
 {
     pixman_region32_fini(&_region);
 }
 
-wf_region::wf_region(const wf_region& other) : wf_region()
+wf::region_t::region_t(const wf::region_t& other) : wf::region_t()
 {
     pixman_region32_copy(this->to_pixman(), other.unconst());
 }
 
-wf_region::wf_region(wf_region&& other) : wf_region()
+wf::region_t::region_t(wf::region_t&& other) : wf::region_t()
 {
     std::swap(this->_region, other._region);
 }
 
-wf_region& wf_region::operator = (const wf_region& other)
+wf::region_t& wf::region_t::operator = (const wf::region_t& other)
 {
     if (&other == this)
         return *this;
@@ -149,7 +171,7 @@ wf_region& wf_region::operator = (const wf_region& other)
     return *this;
 }
 
-wf_region& wf_region::operator = (wf_region&& other)
+wf::region_t& wf::region_t::operator = (wf::region_t&& other)
 {
     if (&other == this)
         return *this;
@@ -158,35 +180,35 @@ wf_region& wf_region::operator = (wf_region&& other)
     return *this;
 }
 
-bool wf_region::empty() const
+bool wf::region_t::empty() const
 {
     return !pixman_region32_not_empty(this->unconst());
 }
 
-void wf_region::clear()
+void wf::region_t::clear()
 {
     pixman_region32_clear(&_region);
 }
 
-void wf_region::expand_edges(int amount)
+void wf::region_t::expand_edges(int amount)
 {
     /* FIXME: make sure we don't throw pixman errors when amount is bigger
      * than a rectangle size */
     wlr_region_expand(this->to_pixman(), this->to_pixman(), amount);
 }
 
-pixman_box32_t wf_region::get_extents() const
+pixman_box32_t wf::region_t::get_extents() const
 {
     return *pixman_region32_extents(this->unconst());
 }
 
-bool wf_region::contains_point(const wf_point& point) const
+bool wf::region_t::contains_point(const wf::point_t& point) const
 {
     return pixman_region32_contains_point(this->unconst(),
         point.x, point.y, NULL);
 }
 
-bool wf_region::contains_pointf(const wf_pointf& point) const
+bool wf::region_t::contains_pointf(const wf::pointf_t& point) const
 {
     for (auto& box : *this)
     {
@@ -201,59 +223,59 @@ bool wf_region::contains_pointf(const wf_pointf& point) const
 }
 
 /* Translate the region */
-wf_region wf_region::operator + (const wf_point& vector) const
+wf::region_t wf::region_t::operator + (const wf::point_t& vector) const
 {
-    wf_region result{*this};
+    wf::region_t result{*this};
     pixman_region32_translate(&result._region, vector.x, vector.y);
     return result;
 }
 
-wf_region& wf_region::operator += (const wf_point& vector)
+wf::region_t& wf::region_t::operator += (const wf::point_t& vector)
 {
     pixman_region32_translate(&_region, vector.x, vector.y);
     return *this;
 }
 
-wf_region wf_region::operator * (float scale) const
+wf::region_t wf::region_t::operator * (float scale) const
 {
-    wf_region result;
+    wf::region_t result;
     wlr_region_scale(result.to_pixman(), this->unconst(), scale);
     return result;
 }
 
-wf_region& wf_region::operator *= (float scale)
+wf::region_t& wf::region_t::operator *= (float scale)
 {
     wlr_region_scale(this->to_pixman(), this->to_pixman(), scale);
     return *this;
 }
 
 /* Region intersection */
-wf_region wf_region::operator & (const wlr_box& box) const
+wf::region_t wf::region_t::operator & (const wlr_box& box) const
 {
-    wf_region result;
+    wf::region_t result;
     pixman_region32_intersect_rect(result.to_pixman(), this->unconst(),
         box.x, box.y, box.width, box.height);
 
     return result;
 }
 
-wf_region wf_region::operator & (const wf_region& other) const
+wf::region_t wf::region_t::operator & (const wf::region_t& other) const
 {
-    wf_region result;
+    wf::region_t result;
     pixman_region32_intersect(result.to_pixman(),
         this->unconst(), other.unconst());
 
     return result;
 }
 
-wf_region& wf_region::operator &= (const wlr_box& box)
+wf::region_t& wf::region_t::operator &= (const wlr_box& box)
 {
     pixman_region32_intersect_rect(this->to_pixman(), this->to_pixman(),
         box.x, box.y, box.width, box.height);
     return *this;
 }
 
-wf_region& wf_region::operator &= (const wf_region& other)
+wf::region_t& wf::region_t::operator &= (const wf::region_t& other)
 {
     pixman_region32_intersect(this->to_pixman(),
         this->to_pixman(), other.unconst());
@@ -261,83 +283,83 @@ wf_region& wf_region::operator &= (const wf_region& other)
 }
 
 /* Region union */
-wf_region wf_region::operator | (const wlr_box& other) const
+wf::region_t wf::region_t::operator | (const wlr_box& other) const
 {
-    wf_region result;
+    wf::region_t result;
     pixman_region32_union_rect(result.to_pixman(), this->unconst(),
         other.x, other.y, other.width, other.height);
     return result;
 }
 
-wf_region wf_region::operator | (const wf_region& other) const
+wf::region_t wf::region_t::operator | (const wf::region_t& other) const
 {
-    wf_region result;
+    wf::region_t result;
     pixman_region32_union(result.to_pixman(), this->unconst(), other.unconst());
     return result;
 }
 
-wf_region& wf_region::operator |= (const wlr_box& other)
+wf::region_t& wf::region_t::operator |= (const wlr_box& other)
 {
     pixman_region32_union_rect(this->to_pixman(), this->to_pixman(),
         other.x, other.y, other.width, other.height);
     return *this;
 }
 
-wf_region& wf_region::operator |= (const wf_region& other)
+wf::region_t& wf::region_t::operator |= (const wf::region_t& other)
 {
     pixman_region32_union(this->to_pixman(), this->to_pixman(), other.unconst());
     return *this;
 }
 
 /* Subtract the box/region from the current region */
-wf_region wf_region::operator ^ (const wlr_box& box) const
+wf::region_t wf::region_t::operator ^ (const wlr_box& box) const
 {
-    wf_region result;
-    wf_region sub{box};
+    wf::region_t result;
+    wf::region_t sub{box};
     pixman_region32_subtract(result.to_pixman(), this->unconst(), sub.to_pixman());
     return result;
 }
 
-wf_region wf_region::operator ^ (const wf_region& other) const
+wf::region_t wf::region_t::operator ^ (const wf::region_t& other) const
 {
-    wf_region result;
+    wf::region_t result;
     pixman_region32_subtract(result.to_pixman(),
         this->unconst(), other.unconst());
     return result;
 }
 
-wf_region& wf_region::operator ^= (const wlr_box& box)
+wf::region_t& wf::region_t::operator ^= (const wlr_box& box)
 {
-    wf_region sub{box};
+    wf::region_t sub{box};
     pixman_region32_subtract(this->to_pixman(),
         this->to_pixman(), sub.to_pixman());
     return *this;
 }
 
-wf_region& wf_region::operator ^= (const wf_region& other)
+wf::region_t& wf::region_t::operator ^= (const wf::region_t& other)
 {
     pixman_region32_subtract(this->to_pixman(),
         this->to_pixman(), other.unconst());
     return *this;
 }
 
-pixman_region32_t *wf_region::to_pixman()
+pixman_region32_t *wf::region_t::to_pixman()
 {
     return &_region;
 }
 
-pixman_region32_t* wf_region::unconst() const
+pixman_region32_t* wf::region_t::unconst() const
 {
     return const_cast<pixman_region32_t*> (&_region);
 }
 
-const pixman_box32_t* wf_region::begin() const
+const pixman_box32_t* wf::region_t::begin() const
 {
     int n;
     return pixman_region32_rectangles(unconst(), &n);
 }
 
-const pixman_box32_t* wf_region::end() const
+const pixman_box32_t* wf::region_t::end() const
 {
     int n;
     auto data = pixman_region32_rectangles(unconst(), &n);
@@ -345,27 +367,27 @@ const pixman_box32_t* wf_region::end() const
 }
 
 /* Misc helper functions */
-int64_t timespec_to_msec(const timespec& ts)
+int64_t wf::timespec_to_msec(const timespec& ts)
 {
     return ts.tv_sec * 1000ll + ts.tv_nsec / 1000000ll;
 }
 
-uint32_t get_current_time()
+uint32_t wf::get_current_time()
 {
     timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
 
-    return timespec_to_msec(ts);
+    return wf::timespec_to_msec(ts);
 }
 
-wf_geometry clamp(wf_geometry window, wf_geometry output)
+wf::geometry_t wf::clamp(wf::geometry_t window, wf::geometry_t output)
 {
-    window.width = clamp(window.width, 0, output.width);
-    window.height = clamp(window.height, 0, output.height);
+    window.width = wf::clamp(window.width, 0, output.width);
+    window.height = wf::clamp(window.height, 0, output.height);
 
-    window.x = clamp(window.x,
+    window.x = wf::clamp(window.x,
         output.x, output.x + output.width - window.width);
-    window.y = clamp(window.y,
+    window.y = wf::clamp(window.y,
         output.y, output.y + output.height - window.height);
 
     return window;

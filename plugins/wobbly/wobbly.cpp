@@ -1,9 +1,9 @@
-#include <plugin.hpp>
-#include <signal-definitions.hpp>
-#include <core.hpp>
-#include <view-transform.hpp>
-#include <workspace-manager.hpp>
-#include <render-manager.hpp>
+#include <wayfire/plugin.hpp>
+#include <wayfire/signal-definitions.hpp>
+#include <wayfire/core.hpp>
+#include <wayfire/view-transform.hpp>
+#include <wayfire/workspace-manager.hpp>
+#include <wayfire/render-manager.hpp>
 
 extern "C"
 {
@@ -71,7 +71,7 @@ void destroy_program()
 /**
  * Enumerate the needed triangles for rendering the model
  */
-void prepare_geometry(wobbly_surface *model, wf_geometry src_box,
+void prepare_geometry(wobbly_surface *model, wf::geometry_t src_box,
     std::vector<float>& vert, std::vector<float>& uv)
 {
     float x = src_box.x, y = src_box.y, w = src_box.width, h = src_box.height;
@@ -154,28 +154,22 @@ void render_triangles(GLuint tex, glm::mat4 mat, float *pos, float *uv, int cnt)
 
 namespace wobbly_settings
 {
-    wf_option friction, spring_k, resolution;
-
-    void init(wayfire_config *config)
-    {
-        auto section = config->get_section("wobbly");
-        friction = section->get_option("friction", "3");
-        spring_k = section->get_option("spring_k", "8");
-        resolution = section->get_option("grid_resolution", "6");
-    };
+    wf::option_wrapper_t<double> friction{"wobbly/friction"};
+    wf::option_wrapper_t<double> spring_k{"wobbly/spring_k"};
+    wf::option_wrapper_t<int> resolution{"wobbly/grid_resolution"};
 };
 
 extern "C"
 {
     double wobbly_settings_get_friction()
     {
-        return clamp(wobbly_settings::friction->as_cached_double(),
+        return wf::clamp((double) wobbly_settings::friction,
             MINIMAL_FRICTION, MAXIMAL_FRICTION);
     }
 
     double wobbly_settings_get_spring_k()
     {
-        return clamp(wobbly_settings::spring_k->as_cached_double(),
+        return wf::clamp((double) wobbly_settings::spring_k,
             MINIMAL_SPRING_K, MAXIMAL_SPRING_K);
     }
 }
@@ -206,13 +200,13 @@ class iwobbly_state_t
     virtual ~iwobbly_state_t() {}
 
     /** Called when a grab starts */
-    virtual void handle_grab_start(wf_point grab, bool takeover) {};
+    virtual void handle_grab_start(wf::point_t grab, bool takeover) {};
 
     /** Called when the wobbly grab is moved. */
-    virtual void handle_grab_move(wf_point grab) {};
+    virtual void handle_grab_move(wf::point_t grab) {};
 
     /** Query the last grab point */
-    virtual wf_point get_grab_position() const { return {0, 0}; };
+    virtual wf::point_t get_grab_position() const { return {0, 0}; };
 
     /**
      * Called when the wobbly grab is ended.
@@ -228,7 +222,7 @@ class iwobbly_state_t
     }
 
     /** Called when the view wm geometry changes */
-    virtual void handle_wm_geometry(const wf_geometry& old_wm_geometry) { }
+    virtual void handle_wm_geometry(const wf::geometry_t& old_wm_geometry) { }
 
     /** @return true if the wobbly animation is done. */
     virtual bool is_wobbly_done() const
@@ -267,8 +261,8 @@ class iwobbly_state_t
   protected:
     wayfire_view view;
     const wobbly_model_t& model;
-    wf_geometry wm_geometry;
-    wf_geometry bounding_box;
+    wf::geometry_t wm_geometry;
+    wf::geometry_t bounding_box;
 };
 
 /**
@@ -279,14 +273,14 @@ class wobbly_state_grabbed_t : public iwobbly_state_t
 {
   public:
     using iwobbly_state_t::iwobbly_state_t;
-    virtual void handle_grab_start(wf_point grab, bool takeover) override
+    virtual void handle_grab_start(wf::point_t grab, bool takeover) override
     {
         this->last_grab = {(int)grab.x, (int)grab.y};
         if (!takeover)
             wobbly_grab_notify(model.get(), last_grab.x, last_grab.y);
     }
 
-    virtual wf_point get_grab_position() const override
+    virtual wf::point_t get_grab_position() const override
     {
         return this->last_grab;
     }
@@ -324,8 +318,8 @@ class wobbly_state_grabbed_t : public iwobbly_state_t
     }
 
   protected:
-    wf_point last_grab;
-    void handle_grab_move(wf_point grab) override
+    wf::point_t last_grab;
+    void handle_grab_move(wf::point_t grab) override
     {
         wobbly_move_notify(model.get(), grab.x, grab.y);
         this->last_grab = {(int)grab.x, (int)grab.y};
@@ -338,7 +332,7 @@ class wobbly_state_grabbed_t : public iwobbly_state_t
 };
 
 static void wobbly_tiled_state_handle_frame(const wobbly_model_t& model,
-    const wf_geometry& old_bbox, const wf_geometry& new_bbox)
+    const wf::geometry_t& old_bbox, const wf::geometry_t& new_bbox)
 {
     if (new_bbox != old_bbox)
     {
@@ -439,7 +433,7 @@ class wobbly_state_floating_t : public iwobbly_state_t
         this->wm_geometry = wm;
     }
 
-    void handle_wm_geometry(const wf_geometry& old_wm) override
+    void handle_wm_geometry(const wf::geometry_t& old_wm) override
     {
         auto bbox = view->get_bounding_box("wobbly");
         wobbly_set_top_anchor(model.get(),
@@ -482,7 +476,7 @@ class wobbly_state_free_t : public iwobbly_state_t
 };
 }
 
-class wf_wobbly : public wf_view_transformer_t
+class wf_wobbly : public wf::view_transformer_t
 {
     wayfire_view view;
     wf::effect_hook_t pre_hook;
@@ -541,8 +535,8 @@ class wf_wobbly : public wf_view_transformer_t
         model->grabbed = 0;
         model->synced = 1;
 
-        model->x_cells = wobbly_settings::resolution->as_cached_int();
-        model->y_cells = wobbly_settings::resolution->as_cached_int();
+        model->x_cells = wobbly_settings::resolution;
+        model->y_cells = wobbly_settings::resolution;
 
         model->v = NULL;
         model->uv = NULL;
@@ -555,7 +549,7 @@ class wf_wobbly : public wf_view_transformer_t
     {
         this->view = view;
         init_model();
-        last_frame = get_current_time();
+        last_frame = wf::get_current_time();
 
         pre_hook = [=] () { update_model(); };
         view->get_output()->render->add_effect(&pre_hook, wf::OUTPUT_EFFECT_PRE);
@@ -571,9 +565,9 @@ class wf_wobbly : public wf_view_transformer_t
         update_wobbly_state(false, {0, 0}, false);
     }
 
-    uint32_t get_z_order() { return WF_TRANSFORMER_HIGHLEVEL; }
+    uint32_t get_z_order() { return wf::TRANSFORMER_HIGHLEVEL; }
 
-    virtual wlr_box get_bounding_box(wf_geometry, wf_geometry)
+    virtual wlr_box get_bounding_box(wf::geometry_t, wf::geometry_t)
     {
         auto box = wobbly_boundingbox(model.get());
 
@@ -586,8 +580,8 @@ class wf_wobbly : public wf_view_transformer_t
         return result;
     }
 
-    virtual wf_pointf local_to_transformed_point(wf_geometry view, wf_pointf point) { return {0, 0}; }
-    virtual wf_pointf transformed_to_local_point(wf_geometry view, wf_pointf point)
+    virtual wf::pointf_t local_to_transformed_point(wf::geometry_t view, wf::pointf_t point) { return {0, 0}; }
+    virtual wf::pointf_t transformed_to_local_point(wf::geometry_t view, wf::pointf_t point)
     {
         return point;
     }
@@ -604,7 +598,7 @@ class wf_wobbly : public wf_view_transformer_t
         view->connect_signal("geometry-changed", &this->view_geometry_changed);
 
         /* Update all the wobbly model */
-        auto now = get_current_time();
+        auto now = wf::get_current_time();
         wobbly_prepare_paint(model.get(), now - last_frame);
 
         /* Update wobbly geometry */
@@ -618,7 +612,7 @@ class wf_wobbly : public wf_view_transformer_t
     }
 
     virtual void render_box(uint32_t src_tex, wlr_box src_box,
-        wlr_box scissor_box, const wf_framebuffer& target_fb)
+        wlr_box scissor_box, const wf::framebuffer_t& target_fb)
     {
         OpenGL::render_begin(target_fb);
         target_fb.scissor(scissor_box);
@@ -643,7 +637,7 @@ class wf_wobbly : public wf_view_transformer_t
      * @param grab The position of the starting grab.
      * @param end_grab Whether to end an existing grab.
      */
-    void update_wobbly_state(bool start_grab, wf_point grab, bool end_grab)
+    void update_wobbly_state(bool start_grab, wf::point_t grab, bool end_grab)
     {
         bool tiled = view->tiled_edges || view->fullscreen;
         bool was_grabbed =
@@ -721,7 +715,7 @@ class wf_wobbly : public wf_view_transformer_t
         update_wobbly_state(true, {x, y}, false);
     }
 
-    void move(wf_point point)
+    void move(wf::point_t point)
     {
         state->handle_grab_move(point);
     }
@@ -760,9 +754,8 @@ class wayfire_wobbly : public wf::plugin_interface_t
 {
     wf::signal_callback_t wobbly_changed;
     public:
-        void init(wayfire_config *config)
+        void init() override
         {
-            wobbly_settings::init(config);
             grab_interface->capabilities = 0;
             grab_interface->name = "wobbly";
 
@@ -807,7 +800,7 @@ class wayfire_wobbly : public wf::plugin_interface_t
                 wobbly->end_grab();
         }
 
-        void fini()
+        void fini() override
         {
             for (auto& view : output->workspace->get_views_in_layer(wf::ALL_LAYERS))
             {

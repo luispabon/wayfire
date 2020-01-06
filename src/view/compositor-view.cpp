@@ -1,9 +1,10 @@
-#include "core.hpp"
-#include "output.hpp"
-#include "opengl.hpp"
-#include "compositor-view.hpp"
-#include "signal-definitions.hpp"
-#include "debug.hpp"
+#include <wayfire/core.hpp>
+#include <wayfire/output.hpp>
+#include <wayfire/opengl.hpp>
+#include <wayfire/compositor-view.hpp>
+#include <wayfire/signal-definitions.hpp>
+#include <wayfire/debug.hpp>
+#include <cstring>
 
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -58,7 +59,7 @@ bool wf::mirror_view_t::is_mapped() const
     return base_view && base_view->is_mapped();
 }
 
-wf_size_t wf::mirror_view_t::get_size() const
+wf::dimensions_t wf::mirror_view_t::get_size() const
 {
     if (!is_mapped())
         return {0, 0};
@@ -67,16 +68,16 @@ wf_size_t wf::mirror_view_t::get_size() const
     return {box.width, box.height};
 }
 
-void wf::mirror_view_t::simple_render(const wf_framebuffer& fb, int x, int y,
-    const wf_region& damage)
+void wf::mirror_view_t::simple_render(const wf::framebuffer_t& fb, int x, int y,
+    const wf::region_t& damage)
 {
     if (!is_mapped())
         return;
 
     /* Normally we shouldn't copy framebuffers. But in this case we can assume
      * nothing will break, because the copy will be destroyed immediately */
-    wf_framebuffer copy;
-    memcpy((void*)&copy, (void*)&fb, sizeof(wf_framebuffer));
+    wf::framebuffer_t copy;
+    std::memcpy((void*)&copy, (void*)&fb, sizeof(wf::framebuffer_t));
 
     /* The base view is in another coordinate system, we need to calculate the
      * difference between the two, so that it appears at the correct place.
@@ -105,12 +106,12 @@ void wf::mirror_view_t::move(int x, int y)
     emit_signal("geometry-changed", &data);
 }
 
-wf_geometry wf::mirror_view_t::get_output_geometry()
+wf::geometry_t wf::mirror_view_t::get_output_geometry()
 {
     if (!is_mapped())
         return get_bounding_box();
 
-    wf_geometry geometry;
+    wf::geometry_t geometry;
     geometry.x = this->x;
     geometry.y = this->y;
 
@@ -144,13 +145,13 @@ void wf::color_rect_view_t::close()
     unref();
 }
 
-void wf::color_rect_view_t::set_color(wf_color color)
+void wf::color_rect_view_t::set_color(wf::color_t color)
 {
     this->_color = color;
     damage();
 }
 
-void wf::color_rect_view_t::set_border_color(wf_color border)
+void wf::color_rect_view_t::set_border_color(wf::color_t border)
 {
     this->_border_color = border;
     damage();
@@ -167,7 +168,7 @@ bool wf::color_rect_view_t::is_mapped() const
     return _is_mapped;
 }
 
-wf_size_t wf::color_rect_view_t::get_size() const
+wf::dimensions_t wf::color_rect_view_t::get_size() const
 {
     return {
         geometry.width,
@@ -175,8 +176,8 @@ wf_size_t wf::color_rect_view_t::get_size() const
     };
 }
 
-static void render_colored_rect(const wf_framebuffer& fb, float projection[9],
-    int x, int y, int w, int h, const wf_color& color)
+static void render_colored_rect(const wf::framebuffer_t& fb, float projection[9],
+    int x, int y, int w, int h, const wf::color_t& color)
 {
     wlr_box render_geometry_unscaled {x, y, w, h};
     wlr_box render_geometry = fb.damage_box_from_geometry_box(
@@ -187,12 +188,12 @@ static void render_colored_rect(const wf_framebuffer& fb, float projection[9],
         WL_OUTPUT_TRANSFORM_NORMAL, 0, projection);
 
     float a = color.a;
-    float col[4] = {color.r * a, color.g * a, color.b * a, a};
+    float col[4] = {(float)color.r * a, (float)color.g * a, (float)color.b * a, a};
     wlr_render_quad_with_matrix(wf::get_core().renderer, col, matrix);
 }
 
-void wf::color_rect_view_t::simple_render(const wf_framebuffer& fb, int x, int y,
-    const wf_region& damage)
+void wf::color_rect_view_t::simple_render(const wf::framebuffer_t& fb, int x, int y,
+    const wf::region_t& damage)
 {
     float projection[9];
     wlr_matrix_projection(projection, fb.viewport_width, fb.viewport_height,
@@ -254,7 +255,7 @@ void wf::color_rect_view_t::resize(int w, int h)
     emit_signal("geometry-changed", &data);
 }
 
-wf_geometry wf::color_rect_view_t::get_output_geometry()
+wf::geometry_t wf::color_rect_view_t::get_output_geometry()
 {
     return geometry;
 }

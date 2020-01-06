@@ -1,9 +1,9 @@
-#include <plugin.hpp>
-#include <output.hpp>
-#include <view.hpp>
+#include <wayfire/plugin.hpp>
+#include <wayfire/output.hpp>
+#include <wayfire/view.hpp>
 #include <cwctype>
 #include <cstdio>
-#include <signal-definitions.hpp>
+#include <wayfire/signal-definitions.hpp>
 #include <assert.h>
 #include <map>
 
@@ -230,12 +230,12 @@ class wayfire_window_rules : public wf::plugin_interface_t
     std::map<std::string, std::vector<rule_func>> rules_list;
 
     public:
-    void init(wayfire_config *config)
+    void init()
     {
-        auto section = config->get_section("window-rules");
-        for (auto opt : section->options)
+        auto section = wf::get_core().config.get_section("window-rules");
+        for (auto opt : section->get_registered_options())
         {
-            auto rule = parse_add_rule(opt->as_string());
+            auto rule = parse_add_rule(opt->get_value_str());
             rules_list[rule.signal].push_back(rule.func);
         }
 

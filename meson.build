@@ -2,18 +2,18 @@ project(
 	'wayfire',
 	'c',
 	'cpp',
-	version: '0.3',
+	version: '0.3.1',
 	license: 'MIT',
 	meson_version: '>=0.43.0',
 	default_options: [
-		'cpp_std=c++14',
+		'cpp_std=c++17',
 		'c_std=c11',
 		'warning_level=2',
 		'werror=false',
 	],
 )
 
-so_version = ['0', '3', '0']
+so_version = ['0', '3', '1']
 wayfire_api_inc  = include_directories('src/api')
 
 wayland_server = dependency('wayland-server')
@@ -29,7 +29,7 @@ libinput       = dependency('libinput', version: '>=1.7.0')
 pixman         = dependency('pixman-1')
 threads        = dependency('threads')
 xkbcommon      = dependency('xkbcommon')
-wlroots        = dependency('wlroots', version: ['>=0.8.0', '<0.9.0'], fallback: ['wlroots', 'wlroots'])
+wlroots        = dependency('wlroots', version: ['>=0.9.0', '<0.10.0'], fallback: ['wlroots', 'wlroots'])
 wfconfig       = dependency('wf-config', version: '>=0.3', fallback: ['wf-config', 'wfconfig'])
 
 needs_libinotify = ['freebsd', 'dragonfly'].contains(host_machine.system())
@@ -45,6 +45,10 @@ conf_data = configuration_data()
 
 conf_data.set('WF_SRC_DIR', meson.source_root())
 conf_data.set('INSTALL_PREFIX', get_option('prefix'))
+conf_data.set('PLUGIN_PATH', join_paths(get_option('prefix'), get_option('libdir'), 'wayfire'))
+metadata_dir_suffix = 'share/wayfire/metadata'
+conf_data.set('PLUGIN_XML_DIR', join_paths(get_option('prefix'), metadata_dir_suffix))
+conf_data.set('SYSCONFDIR', join_paths('/', get_option('sysconfdir')))
 
 # needed to dlopen() plugins
 # -E is for RTTI/dynamic_cast across plugins
@@ -90,6 +94,7 @@ add_project_arguments(['-Wno-unused-parameter'], language: 'cpp')
 
 subdir('proto')
 subdir('src')
+subdir('metadata')
 subdir('plugins')
 
 install_subdir('shaders', install_dir: 'share/wayfire')

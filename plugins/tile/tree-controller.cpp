@@ -3,11 +3,11 @@
 
 #include <set>
 #include <algorithm>
-#include <core.hpp>
-#include <output.hpp>
-#include <workspace-manager.hpp>
-#include <util.hpp>
-#include <nonstd/reverse.hpp>
+#include <wayfire/core.hpp>
+#include <wayfire/output.hpp>
+#include <wayfire/workspace-manager.hpp>
+#include <wayfire/util.hpp>
+#include <wayfire/nonstd/reverse.hpp>
 
 namespace wf
 {
@@ -45,7 +45,7 @@ static void idle_focus(wf::output_t *output, wayfire_view view)
             output, view));
 }
 
-void restack_output_workspace(wf::output_t *output, wf_point workspace)
+void restack_output_workspace(wf::output_t *output, wf::point_t workspace)
 {
     auto views = output->workspace->get_views_on_workspace(workspace,
         wf::WM_LAYERS, true);
@@ -131,7 +131,7 @@ void restack_output_workspace(wf::output_t *output, wf_point workspace)
  * Returns null if no view nodes are present.
  */
 nonstd::observer_ptr<view_node_t> find_view_at(
-    nonstd::observer_ptr<tree_node_t> root, wf_point input)
+    nonstd::observer_ptr<tree_node_t> root, wf::point_t input)
 {
     if (root->as_view_node())
         return root->as_view_node();
@@ -154,7 +154,7 @@ nonstd::observer_ptr<view_node_t> find_view_at(
  *                    for INSERT_NONE
  */
 static split_insertion_t calculate_insert_type(
-    nonstd::observer_ptr<tree_node_t> node, wf_point input, double sensitivity)
+    nonstd::observer_ptr<tree_node_t> node, wf::point_t input, double sensitivity)
 {
     auto window = node->geometry;
 
@@ -199,7 +199,7 @@ static constexpr double SPLIT_PREVIEW_PERCENTAGE = 1.0 / 3.0;
  * dropped at @input over @node
  */
 split_insertion_t calculate_insert_type(
-    nonstd::observer_ptr<tree_node_t> node, wf_point input)
+    nonstd::observer_ptr<tree_node_t> node, wf::point_t input)
 {
     return calculate_insert_type(node, input, SPLIT_PREVIEW_PERCENTAGE);
 }
@@ -207,7 +207,7 @@ split_insertion_t calculate_insert_type(
 /**
  * Calculate the bounds of the split preview
  */
-wf_geometry calculate_split_preview(nonstd::observer_ptr<tree_node_t> over,
+wf::geometry_t calculate_split_preview(nonstd::observer_ptr<tree_node_t> over,
     split_insertion_t split_type)
 {
     auto preview = over->geometry;
@@ -241,7 +241,7 @@ nonstd::observer_ptr<view_node_t> find_first_view_in_direction(
 
     /* Since nodes are arranged tightly into a grid, we can just find the
      * proper edge and find the view there */
-    wf_point point;
+    wf::point_t point;
     switch(direction)
     {
         case INSERT_ABOVE:
@@ -280,7 +280,7 @@ nonstd::observer_ptr<view_node_t> find_first_view_in_direction(
 
 /* ------------------------ move_view_controller_t -------------------------- */
 move_view_controller_t::move_view_controller_t(
-    std::unique_ptr<tree_node_t>& uroot, wf_point grab)
+    std::unique_ptr<tree_node_t>& uroot, wf::point_t grab)
     : root(uroot)
 {
     this->grabbed_view = find_view_at(root, grab);
@@ -301,7 +301,7 @@ move_view_controller_t::~move_view_controller_t()
 }
 
 nonstd::observer_ptr<view_node_t>
-move_view_controller_t::check_drop_destination(wf_point input)
+move_view_controller_t::check_drop_destination(wf::point_t input)
 {
     auto dropped_at = find_view_at(this->root, this->current_input);
     if (!dropped_at || dropped_at == this->grabbed_view)
@@ -310,7 +310,7 @@ move_view_controller_t::check_drop_destination(wf_point input)
     return dropped_at;
 }
 
-void move_view_controller_t::ensure_preview(wf_point start)
+void move_view_controller_t::ensure_preview(wf::point_t start)
 {
     if (this->preview)
         return;
@@ -321,7 +321,7 @@ void move_view_controller_t::ensure_preview(wf_point start)
     wf::get_core().add_view(std::move(view));
 }
 
-void move_view_controller_t::input_motion(wf_point input)
+void move_view_controller_t::input_motion(wf::point_t input)
 {
     if (!this->grabbed_view)
         return;
@@ -418,14 +418,14 @@ void move_view_controller_t::input_released()
     flatten_tree(this->root);
 }
 
-wf_geometry eval(nonstd::observer_ptr<tree_node_t> node)
+wf::geometry_t eval(nonstd::observer_ptr<tree_node_t> node)
 {
-    return node ? node->geometry : wf_geometry{0, 0, 0, 0};
+    return node ? node->geometry : wf::geometry_t{0, 0, 0, 0};
 }
 
 /* ----------------------- resize tile controller --------------------------- */
 resize_view_controller_t::resize_view_controller_t(
-    std::unique_ptr<tree_node_t>& uroot, wf_point grab)
+    std::unique_ptr<tree_node_t>& uroot, wf::point_t grab)
     : root(uroot)
 {
     this->grabbed_view = find_view_at(root, grab);
@@ -443,7 +443,7 @@ resize_view_controller_t::~resize_view_controller_t()
 {
 }
 
-uint32_t resize_view_controller_t::calculate_resizing_edges(wf_point grab)
+uint32_t resize_view_controller_t::calculate_resizing_edges(wf::point_t grab)
 {
     uint32_t result_edges = 0;
     auto window = this->grabbed_view->geometry;
@@ -565,7 +565,7 @@ void resize_view_controller_t::adjust_geometry(int32_t& x1, int32_t& len1,
     len2 -= delta;
 }
 
-void resize_view_controller_t::input_motion(wf_point input)
+void resize_view_controller_t::input_motion(wf::point_t input)
 {
     if (!this->grabbed_view)
         return;

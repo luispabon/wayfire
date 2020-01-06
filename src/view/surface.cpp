@@ -14,12 +14,12 @@ extern "C"
 
 #include "surface-impl.hpp"
 #include "subsurface.hpp"
-#include "opengl.hpp"
+#include "wayfire/opengl.hpp"
 #include "../core/core-impl.hpp"
-#include "output.hpp"
-#include "debug.hpp"
-#include "render-manager.hpp"
-#include "signal-definitions.hpp"
+#include "wayfire/output.hpp"
+#include <wayfire/util/log.hpp>
+#include "wayfire/render-manager.hpp"
+#include "wayfire/signal-definitions.hpp"
 
 /****************************
  * surface_interface_t functions
@@ -72,7 +72,7 @@ wf::surface_interface_t *wf::surface_interface_t::get_main_surface()
 }
 
 std::vector<wf::surface_iterator_t> wf::surface_interface_t::enumerate_surfaces(
-    wf_point surface_origin)
+    wf::point_t surface_origin)
 {
     std::vector<wf::surface_iterator_t> result;
     for (auto& child : priv->surface_children)
@@ -151,13 +151,13 @@ bool wf::surface_interface_t::accepts_input(int32_t sx, int32_t sy)
     return wlr_surface_point_accepts_input(priv->wsurface, sx, sy);
 }
 
-void wf::surface_interface_t::subtract_opaque(wf_region& region, int x, int y)
+void wf::surface_interface_t::subtract_opaque(wf::region_t& region, int x, int y)
 {
     if (!priv->wsurface)
         return;
 
-    wf_region opaque{&priv->wsurface->opaque_region};
-    opaque += wf_point{x, y};
+    wf::region_t opaque{&priv->wsurface->opaque_region};
+    opaque += wf::point_t{x, y};
     opaque *= get_output()->handle->scale;
 
     /* region scaling uses std::ceil/std::floor, so the resulting region
@@ -189,7 +189,7 @@ wf::wlr_surface_base_t::wlr_surface_base_t(surface_interface_t *self)
         auto sub = static_cast<wlr_subsurface*> (data);
         if (sub->data)
         {
-            log_error("Creating the same subsurface twice!");
+            LOGE("Creating the same subsurface twice!");
             return;
         }
 
@@ -211,7 +211,7 @@ wf::wlr_surface_base_t::~wlr_surface_base_t() {}
 
 
 
-wf_point wf::wlr_surface_base_t::get_window_offset()
+wf::point_t wf::wlr_surface_base_t::get_window_offset()
 {
     return {0, 0};
 }
@@ -221,7 +221,7 @@ bool wf::wlr_surface_base_t::_is_mapped() const
     return surface;
 }
 
-wf_size_t wf::wlr_surface_base_t::_get_size() const
+wf::dimensions_t wf::wlr_surface_base_t::_get_size() const
 {
     if (!_is_mapped())
         return {0, 0};
@@ -293,7 +293,7 @@ wlr_buffer* wf::wlr_surface_base_t::get_buffer()
 }
 
 void wf::wlr_surface_base_t::damage_surface_region(
-    const wf_region& dmg)
+    const wf::region_t& dmg)
 {
     for (const auto& rect : dmg)
         damage_surface_box(wlr_box_from_pixman_box(rect));
@@ -319,7 +319,7 @@ void wf::wlr_surface_base_t::apply_surface_damage()
     if (!_as_si->get_output() || !_is_mapped())
         return;
 
-    wf_region dmg;
+    wf::region_t dmg;
     wlr_surface_get_effective_damage(surface, dmg.to_pixman());
 
     if (surface->current.scale != 1 ||
@@ -352,7 +352,7 @@ void wf::wlr_surface_base_t::update_output(wf::output_t *old_output,
 }
 
 void wf::wlr_surface_base_t::_wlr_render_box(
-    const wf_framebuffer& fb, int x, int y, const wlr_box& scissor)
+    const wf::framebuffer_t& fb, int x, int y, const wlr_box& scissor)
 {
     if (!get_buffer())
         return;
@@ -385,8 +385,8 @@ void wf::wlr_surface_base_t::_wlr_render_box(
     OpenGL::render_end();
 }
 
-void wf::wlr_surface_base_t::_simple_render(const wf_framebuffer& fb,
-    int x, int y, const wf_region& damage)
+void wf::wlr_surface_base_t::_simple_render(const wf::framebuffer_t& fb,
+    int x, int y, const wf::region_t& damage)
 {
     for (const auto& rect : damage)
     {

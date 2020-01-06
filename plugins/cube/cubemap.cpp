@@ -2,16 +2,14 @@
 
 #include <glm/gtc/matrix_transform.hpp>
 
-#include <debug.hpp>
+#include <wayfire/debug.hpp>
 #include <config.h>
-#include <core.hpp>
-#include <img.hpp>
+#include <wayfire/core.hpp>
+#include <wayfire/img.hpp>
 
 wf_cube_background_cubemap::wf_cube_background_cubemap()
 {
     create_program();
-    background_image = (*wf::get_core().config)["cube"]
-        ->get_option("cubemap_image", "");
     reload_texture();
 }
 
@@ -38,10 +36,10 @@ void wf_cube_background_cubemap::create_program()
 
 void wf_cube_background_cubemap::reload_texture()
 {
-    if (last_background_image == background_image->as_string())
+    if (!last_background_image.compare(background_image))
         return;
 
-    last_background_image = background_image->as_string();
+    last_background_image = background_image;
 
     OpenGL::render_begin();
     if (tex == (uint32_t)-1)
@@ -54,7 +52,7 @@ void wf_cube_background_cubemap::reload_texture()
     {
         if (!image_io::load_from_file(last_background_image, GL_TEXTURE_CUBE_MAP_POSITIVE_X + i))
         {
-            log_error("Failed to load cubemap background image from \"%s\".",
+            LOGE("Failed to load cubemap background image from \"%s\".",
                 last_background_image.c_str());
 
             GL_CALL(glDeleteTextures(1, &tex));
@@ -78,7 +76,7 @@ void wf_cube_background_cubemap::reload_texture()
 
 #include "cubemap-vertex-data.hpp"
 
-void wf_cube_background_cubemap::render_frame(const wf_framebuffer& fb,
+void wf_cube_background_cubemap::render_frame(const wf::framebuffer_t& fb,
     wf_cube_animation_attribs& attribs)
 {
     reload_texture();
@@ -100,12 +98,12 @@ void wf_cube_background_cubemap::render_frame(const wf_framebuffer& fb,
     GL_CALL(glVertexAttribPointer(posID, 3, GL_FLOAT, GL_FALSE, 0, skyboxVertices));
 
     auto model = glm::rotate(glm::mat4(1.0),
-        float(attribs.duration.progress(attribs.rotation) * 0.7f),
+        float(attribs.cube_animation.rotation * 0.7f),
         glm::vec3(0, 1, 0));
 
     glm::vec3 look_at{0.,
-        -attribs.duration.progress(attribs.offset_y),
-        attribs.duration.progress(attribs.offset_z)};
+        (double) -attribs.cube_animation.offset_y,
+        (double) attribs.cube_animation.offset_z};
 
     auto view = glm::lookAt(glm::vec3(0., 0., 0.), look_at, glm::vec3(0., 1., 0.));
     auto vp = fb.transform * attribs.projection * view;

@@ -1,17 +1,17 @@
-#include <plugin.hpp>
-#include <output.hpp>
-#include <core.hpp>
-#include <view.hpp>
-#include <animation.hpp>
-#include <workspace-manager.hpp>
-#include <render-manager.hpp>
-#include <compositor-view.hpp>
-#include <output-layout.hpp>
-#include <debug.hpp>
+#include <wayfire/plugin.hpp>
+#include <wayfire/output.hpp>
+#include <wayfire/core.hpp>
+#include <wayfire/view.hpp>
+#include <wayfire/util/duration.hpp>
+#include <wayfire/workspace-manager.hpp>
+#include <wayfire/render-manager.hpp>
+#include <wayfire/compositor-view.hpp>
+#include <wayfire/output-layout.hpp>
+#include <wayfire/debug.hpp>
 
 #include <cmath>
 #include <linux/input.h>
-#include <signal-definitions.hpp>
+#include <wayfire/signal-definitions.hpp>
 
 #include "snap_signal.hpp"
 #include "move-snap-helper.hpp"
@@ -21,7 +21,7 @@
 class wf_move_mirror_view : public wf::mirror_view_t
 {
     int _dx, _dy;
-    wf_geometry geometry;
+    wf::geometry_t geometry;
     public:
 
     wf_move_mirror_view(wayfire_view view, wf::output_t *output, int dx, int dy) :
@@ -32,10 +32,10 @@ class wf_move_mirror_view : public wf::mirror_view_t
         emit_map_state_change(this);
     }
 
-    virtual wf_geometry get_output_geometry()
+    virtual wf::geometry_t get_output_geometry()
     {
         if (base_view)
-            geometry = base_view->get_bounding_box() + wf_point{_dx, _dy};
+            geometry = base_view->get_bounding_box() + wf::point_t{_dx, _dy};
 
         return geometry;
     }
@@ -59,11 +59,14 @@ class wf_move_mirror_view : public wf::mirror_view_t
 class wayfire_move : public wf::plugin_interface_t
 {
     wf::signal_callback_t move_request, view_destroyed;
-    button_callback activate_binding;
-    touch_callback touch_activate_binding;
+    wf::button_callback activate_binding;
+    wf::touch_callback touch_activate_binding;
     wayfire_view view;
 
-    wf_option enable_snap, snap_threshold;
+    wf::option_wrapper_t<bool> enable_snap{"move/enable_snap"};
+    wf::option_wrapper_t<int> snap_threshold{"move/snap_threshold"};
+    wf::option_wrapper_t<wf::buttonbinding_t> activate_button{"move/activate"};
+
     bool is_using_touch;
     bool was_client_request;
 
@@ -75,14 +78,12 @@ class wayfire_move : public wf::plugin_interface_t
 #define MOVE_HELPER view->get_data<wf::move_snap_helper_t>()
 
     public:
-        void init(wayfire_config *config)
+        void init() override
         {
             grab_interface->name = "move";
             grab_interface->capabilities =
                 wf::CAPABILITY_GRAB_INPUT | wf::CAPABILITY_MANAGE_DESKTOP;
 
-            auto section = config->get_section("move");
-            wf_option button = section->get_option("activate", "<super> BTN_LEFT");
             activate_binding = [=] (uint32_t, int, int)
             {
                 is_using_touch = false;
@@ -90,7 +91,9 @@ class wayfire_move : public wf::plugin_interface_t
                 auto view = wf::get_core().get_cursor_focus_view();
 
                 if (view && view->role != wf::VIEW_ROLE_SHELL_VIEW)
-                    initiate(view);
+                    return initiate(view);
+
+                return false;
             };
 
             touch_activate_binding = [=] (int32_t sx, int32_t sy)
@@ -100,14 +103,15 @@ class wayfire_move : public wf::plugin_interface_t
                 auto view = wf::get_core().get_touch_focus_view();
 
                 if (view && view->role != wf::VIEW_ROLE_SHELL_VIEW)
-                    initiate(view);
+                    return initiate(view);
+
+                return false;
             };
 
-            output->add_button(button, &activate_binding);
-            output->add_touch(new_static_option("<super>"), &touch_activate_binding);
-
-            enable_snap = section->get_option("enable_snap", "1");
-            snap_threshold = section->get_option("snap_threshold", "2");
+            output->add_button(activate_button, &activate_binding);
+            output->add_touch(
+                wf::create_option_string<wf::keybinding_t>("<super>"),
+                &touch_activate_binding);
 
             using namespace std::placeholders;
             grab_interface->callbacks.pointer.button =
@@ -117,7 +121,7 @@ class wayfire_move : public wf::plugin_interface_t
                 if (state == WLR_BUTTON_RELEASED && was_client_request && b == BTN_LEFT)
                     return input_pressed(state, false);
 
-                if (b != button->as_button().button)
+                if (b != wf::buttonbinding_t(activate_button).get_button())
                     return;
 
                 is_using_touch = false;
@@ -175,40 +179,42 @@ class wayfire_move : public wf::plugin_interface_t
             initiate(view);
         }
 
-        void initiate(wayfire_view view)
+        bool initiate(wayfire_view view)
         {
             if (!view || !view->is_mapped())
-                return;
+                return false;
 
             auto current_ws_impl =
                 output->workspace->get_workspace_implementation();
             if (!current_ws_impl->view_movable(view))
-                return;
+                return false;
 
             if (view->get_output() != output)
-                return;
+                return false;
 
             uint32_t view_layer = output->workspace->get_view_layer(view);
             /* Allow moving an on-screen keyboard while screen is locked */
             bool ignore_inhibit = view_layer == wf::LAYER_DESKTOP_WIDGET;
             if (!output->activate_plugin(grab_interface, ignore_inhibit))
-                return;
+                return false;
 
             if (!grab_interface->grab()) {
                 output->deactivate_plugin(grab_interface);
-                return;
+                return false;
             }
 
             view->store_data(std::make_unique<wf::move_snap_helper_t> (
                     view, get_input_coords()));
 
             output->focus_view(view, true);
-            if (enable_snap->as_int())
+            if (enable_snap)
                 slot.slot_id = 0;
 
             this->view = view;
             output->render->set_redraw_always();
             update_multi_output();
+
+            return true;
         }
 
         void input_pressed(uint32_t state, bool view_destroyed)
@@ -262,13 +268,13 @@ class wayfire_move : public wf::plugin_interface_t
         int calc_slot(int x, int y)
         {
             auto g = output->workspace->get_workarea();
-            if (!(output->get_relative_geometry() & wf_point{x, y}))
+            if (!(output->get_relative_geometry() & wf::point_t{x, y}))
                 return 0;
 
             if (view && output->workspace->get_view_layer(view) != wf::LAYER_WORKSPACE)
                 return 0;
 
-            int threshold = snap_threshold->as_cached_int();
+            int threshold = snap_threshold;
 
             bool is_left = x - g.x <= threshold;
             bool is_right = g.x + g.width - x <= threshold;
@@ -340,9 +346,9 @@ class wayfire_move : public wf::plugin_interface_t
         }
 
         /* Returns the currently used input coordinates in global compositor space */
-        wf_point get_global_input_coords()
+        wf::point_t get_global_input_coords()
         {
-            wf_pointf input;
+            wf::pointf_t input;
             if (is_using_touch) {
                 input = wf::get_core().get_touch_position(0);
             } else {
@@ -353,10 +359,10 @@ class wayfire_move : public wf::plugin_interface_t
         }
 
         /* Returns the currently used input coordinates in output-local space */
-        wf_point get_input_coords()
+        wf::point_t get_input_coords()
         {
             auto og = output->get_layout_geometry();
-            return get_global_input_coords() - wf_point{og.x, og.y};
+            return get_global_input_coords() - wf::point_t{og.x, og.y};
         }
 
         /* Moves the view to another output and sends a move request */
@@ -475,7 +481,7 @@ class wayfire_move : public wf::plugin_interface_t
 
             auto current_og = output->get_layout_geometry();
             auto current_geometry =
-                view->get_bounding_box() + wf_point{current_og.x, current_og.y};
+                view->get_bounding_box() + wf::point_t{current_og.x, current_og.y};
 
             for (auto& wo : wf::get_core().output_layout->get_outputs())
             {
@@ -498,7 +504,7 @@ class wayfire_move : public wf::plugin_interface_t
             /* View might get destroyed when updating multi-output */
             if (view)
             {
-                if (enable_snap->as_cached_int() && !MOVE_HELPER->is_view_fixed())
+                if (enable_snap && !MOVE_HELPER->is_view_fixed())
                     update_slot(calc_slot(input.x, input.y));
             } else
             {
@@ -507,7 +513,7 @@ class wayfire_move : public wf::plugin_interface_t
             }
         }
 
-        void fini()
+        void fini() override
         {
             if (grab_interface->is_grabbed())
                 input_pressed(WLR_BUTTON_RELEASED, false);

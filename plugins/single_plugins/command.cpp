@@ -1,9 +1,10 @@
-#include <plugin.hpp>
-#include <output.hpp>
-#include <core.hpp>
+#include <wayfire/plugin.hpp>
+#include <wayfire/output.hpp>
+#include <wayfire/core.hpp>
 #include <linux/input.h>
 #include <linux/input-event-codes.h>
-#include <signal-definitions.hpp>
+#include <wayfire/signal-definitions.hpp>
+#include <wayfire/util/log.hpp>
 
 static bool begins_with(std::string word, std::string prefix)
 {
@@ -42,7 +43,7 @@ static int repeat_once_handler(void *callback)
 
 class wayfire_command : public wf::plugin_interface_t
 {
-    std::vector<activator_callback> bindings;
+    std::vector<wf::activator_callback> bindings;
 
     struct
     {
@@ -58,28 +59,28 @@ class wayfire_command : public wf::plugin_interface_t
         BINDING_REPEAT,
         BINDING_ALWAYS,
     };
-    void on_binding(std::string command, binding_mode mode, wf_activator_source source,
+    bool on_binding(std::string command, binding_mode mode, wf::activator_source_t source,
         uint32_t value)
     {
         /* We already have a repeatable command, do not accept further bindings */
         if (repeat.pressed_key || repeat.pressed_button)
-            return;
+            return false;
 
         if (!output->activate_plugin(grab_interface, mode == BINDING_ALWAYS))
-            return;
+            return false;
 
         wf::get_core().run(command.c_str());
 
         /* No repeat necessary in any of those cases */
-        if (mode != BINDING_REPEAT || source == ACTIVATOR_SOURCE_GESTURE ||
+        if (mode != BINDING_REPEAT || source == wf::ACTIVATOR_SOURCE_GESTURE ||
             value == 0)
         {
             output->deactivate_plugin(grab_interface);
-            return;
+            return true;
         }
 
         repeat.repeat_command = command;
-        if (source == ACTIVATOR_SOURCE_KEYBINDING) {
+        if (source == wf::ACTIVATOR_SOURCE_KEYBINDING) {
             repeat.pressed_key = value;
         } else {
             repeat.pressed_button = value;
@@ -89,11 +90,12 @@ class wayfire_command : public wf::plugin_interface_t
             repeat_delay_timeout_handler, &on_repeat_delay_timeout);
 
         wl_event_source_timer_update(repeat_delay_source,
-            wf::get_core().config->get_section("input")
-                ->get_option("kb_repeat_delay", "400")->as_int());
+            wf::option_wrapper_t<int>("input/kb_repeat_delay"));
 
         wf::get_core().connect_signal("pointer_button", &on_button_event);
         wf::get_core().connect_signal("keyboard_key", &on_key_event);
+
+        return true;
     }
 
     std::function<void()> on_repeat_delay_timeout = [=] ()
@@ -106,8 +108,7 @@ class wayfire_command : public wf::plugin_interface_t
 
     std::function<void()> on_repeat_once = [=] ()
     {
-        uint32_t repeat_rate = wf::get_core().config->get_section("input")
-            ->get_option("kb_repeat_rate", "40")->as_int();
+        uint32_t repeat_rate = wf::option_wrapper_t<int> ("input/kb_repeat_rate");
         if (repeat_rate <= 0 || repeat_rate > 1000)
             return reset_repeat();
 
@@ -160,18 +161,18 @@ class wayfire_command : public wf::plugin_interface_t
 
     public:
 
-    void setup_bindings_from_config(wayfire_config *config)
+    void setup_bindings_from_config()
     {
-        auto section = config->get_section("command");
+        auto section = wf::get_core().config.get_section("command");
 
         std::vector<std::string> command_names;
         const std::string exec_prefix = "command_";
-        for (auto command : section->options)
+        for (auto command : section->get_registered_options())
         {
-            if (begins_with(command->name, exec_prefix))
+            if (begins_with(command->get_name(), exec_prefix))
             {
                 command_names.push_back(
-                    command->name.substr(exec_prefix.length()));
+                    command->get_name().substr(exec_prefix.length()));
             }
         }
 
@@ -186,25 +187,38 @@ class wayfire_command : public wf::plugin_interface_t
             auto repeat_binding_name = "repeatable_binding_" + command_names[i];
             auto always_binding_name = "always_binding_" + command_names[i];
 
-            auto executable = section->get_option(command, "")->as_string();
-            auto repeatable_opt = section->get_option(repeat_binding_name, norepeat);
-            auto regular_opt = section->get_option(regular_binding_name, "none");
-            auto always_opt = section->get_option(always_binding_name, noalways);
+            auto check_activator = [&] (const std::string& name)
+            {
+                auto opt = section->get_option_or(name);
+                if (opt)
+                {
+                    auto value = wf::option_type::from_string<
+                        wf::activatorbinding_t> (opt->get_value_str());
+                    if (value) return wf::create_option(value.value());
+                }
+
+                return wf::option_sptr_t<wf::activatorbinding_t>{};
+            };
+
+            auto executable = section->get_option(command)->get_value_str();
+            auto repeatable_opt = check_activator(repeat_binding_name);
+            auto regular_opt = check_activator(regular_binding_name);
+            auto always_opt = check_activator(always_binding_name);
 
             using namespace std::placeholders;
-            if (repeatable_opt->as_string() != norepeat)
+            if (repeatable_opt)
             {
                 bindings[i] = std::bind(std::mem_fn(&wayfire_command::on_binding),
                     this, executable, BINDING_REPEAT, _1, _2);
                 output->add_activator(repeatable_opt, &bindings[i]);
             }
-            else if (always_opt->as_string() != noalways)
+            else if (always_opt)
             {
                 bindings[i] = std::bind(std::mem_fn(&wayfire_command::on_binding),
                     this, executable, BINDING_ALWAYS, _1, _2);
                 output->add_activator(always_opt, &bindings[i]);
             }
-            else
+            else if (regular_opt)
             {
                 bindings[i] = std::bind(std::mem_fn(&wayfire_command::on_binding),
                     this, executable, BINDING_NORMAL, _1, _2);
@@ -223,19 +237,18 @@ class wayfire_command : public wf::plugin_interface_t
 
     wf::signal_callback_t reload_config;
 
-    void init(wayfire_config *config)
+    void init()
     {
         grab_interface->name = "command";
         grab_interface->capabilities = wf::CAPABILITY_GRAB_INPUT;
 
         using namespace std::placeholders;
 
-        setup_bindings_from_config(config);
-
+        setup_bindings_from_config();
         reload_config = [=] (wf::signal_data_t*)
         {
             clear_bindings();
-            setup_bindings_from_config(wf::get_core().config);
+            setup_bindings_from_config();
         };
 
         wf::get_core().connect_signal("reload-config", &reload_config);

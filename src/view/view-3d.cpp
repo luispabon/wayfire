@@ -1,8 +1,8 @@
-#include "view-transform.hpp"
-#include "opengl.hpp"
-#include "debug.hpp"
-#include "core.hpp"
-#include "output.hpp"
+#include "wayfire/view-transform.hpp"
+#include "wayfire/opengl.hpp"
+#include "wayfire/debug.hpp"
+#include "wayfire/core.hpp"
+#include "wayfire/output.hpp"
 #include <algorithm>
 #include <cmath>
 
@@ -10,7 +10,7 @@
 
 #define PI 3.14159265359
 
-wlr_box wf_view_transformer_t::get_bounding_box(wf_geometry view, wlr_box region)
+wlr_box wf::view_transformer_t::get_bounding_box(wf::geometry_t view, wlr_box region)
 {
     const auto p1 = local_to_transformed_point(view, {1.0 * region.x,                1.0 * region.y});
     const auto p2 = local_to_transformed_point(view, {1.0 * region.x + region.width, 1.0 * region.y});
@@ -25,8 +25,8 @@ wlr_box wf_view_transformer_t::get_bounding_box(wf_geometry view, wlr_box region
     return wlr_box{x1, y1, x2 - x1, y2 - y1};
 }
 
-void wf_view_transformer_t::render_with_damage(uint32_t src_tex, wlr_box src_box,
-            const wf_region& damage, const wf_framebuffer& target_fb)
+void wf::view_transformer_t::render_with_damage(uint32_t src_tex, wlr_box src_box,
+            const wf::region_t& damage, const wf::framebuffer_t& target_fb)
 {
     for (const auto& rect : damage)
     {
@@ -42,7 +42,7 @@ struct transformable_quad
     float off_x, off_y;
 };
 
-static wf_point get_center(wf_geometry view)
+static wf::point_t get_center(wf::geometry_t view)
 {
     return {
         view.x + view.width / 2,
@@ -50,7 +50,7 @@ static wf_point get_center(wf_geometry view)
     };
 }
 
-static wf_pointf get_center_relative_coords(wf_geometry view, wf_pointf point)
+static wf::pointf_t get_center_relative_coords(wf::geometry_t view, wf::pointf_t point)
 {
     return {
         (point.x - view.x) - view.width / 2.0,
@@ -58,7 +58,7 @@ static wf_pointf get_center_relative_coords(wf_geometry view, wf_pointf point)
     };
 }
 
-static wf_pointf get_absolute_coords_from_relative(wf_geometry view, wf_pointf point)
+static wf::pointf_t get_absolute_coords_from_relative(wf::geometry_t view, wf::pointf_t point)
 {
     return {
         point.x + view.x + view.width / 2.0,
@@ -66,9 +66,9 @@ static wf_pointf get_absolute_coords_from_relative(wf_geometry view, wf_pointf p
     };
 }
 
-static transformable_quad center_geometry(wf_geometry output_geometry,
-                                          wf_geometry geometry,
-                                          wf_point target_center)
+static transformable_quad center_geometry(wf::geometry_t output_geometry,
+                                          wf::geometry_t geometry,
+                                          wf::point_t target_center)
 {
     transformable_quad quad;
 
@@ -90,7 +90,7 @@ static transformable_quad center_geometry(wf_geometry output_geometry,
     return quad;
 }
 
-wf_2D_view::wf_2D_view(wayfire_view view)
+wf::view_2D::view_2D(wayfire_view view)
 {
     this->view = view;
 }
@@ -104,7 +104,8 @@ static void rotate_xy(float& x, float& y, float angle)
     y = v.y;
 }
 
-wf_pointf wf_2D_view::local_to_transformed_point(wf_geometry geometry, wf_pointf point)
+wf::pointf_t wf::view_2D::local_to_transformed_point(
+    wf::geometry_t geometry, wf::pointf_t point)
 {
 
     auto p2 = get_center_relative_coords(view->get_wm_geometry(), point);
@@ -119,7 +120,8 @@ wf_pointf wf_2D_view::local_to_transformed_point(wf_geometry geometry, wf_pointf
     return r;
 }
 
-wf_pointf wf_2D_view::transformed_to_local_point(wf_geometry geometry, wf_pointf point)
+wf::pointf_t wf::view_2D::transformed_to_local_point(
+    wf::geometry_t geometry, wf::pointf_t point)
 {
     point = get_center_relative_coords(view->get_wm_geometry(), point);
     float x = point.x, y = point.y;
@@ -132,8 +134,8 @@ wf_pointf wf_2D_view::transformed_to_local_point(wf_geometry geometry, wf_pointf
     return get_absolute_coords_from_relative(view->get_wm_geometry(), {x, y});
 }
 
-void wf_2D_view::render_box(uint32_t src_tex, wlr_box src_box,
-    wlr_box scissor_box, const wf_framebuffer& fb)
+void wf::view_2D::render_box(uint32_t src_tex, wlr_box src_box,
+    wlr_box scissor_box, const wf::framebuffer_t& fb)
 {
     auto quad = center_geometry(fb.geometry, src_box, get_center(view->get_wm_geometry()));
 
@@ -159,8 +161,8 @@ void wf_2D_view::render_box(uint32_t src_tex, wlr_box src_box,
     OpenGL::render_end();
 }
 
-const float wf_3D_view::fov = PI/4;
-glm::mat4 wf_3D_view::default_view_matrix()
+const float wf::view_3D::fov = PI/4;
+glm::mat4 wf::view_3D::default_view_matrix()
 {
     return glm::lookAt(
         glm::vec3(0., 0., 1.0 / std::tan(fov / 2)),
@@ -168,26 +170,27 @@ glm::mat4 wf_3D_view::default_view_matrix()
         glm::vec3(0., 1., 0.));
 }
 
-glm::mat4 wf_3D_view::default_proj_matrix()
+glm::mat4 wf::view_3D::default_proj_matrix()
 {
     return glm::perspective(fov, 1.0f, .1f, 100.f);
 }
 
-wf_3D_view::wf_3D_view(wayfire_view view)
+wf::view_3D::view_3D(wayfire_view view)
 {
     this->view = view;
     view_proj = default_proj_matrix() * default_view_matrix();
 }
 
 /* TODO: cache total_transform, because it is often unnecessarily recomputed */
-glm::mat4 wf_3D_view::calculate_total_transform()
+glm::mat4 wf::view_3D::calculate_total_transform()
 {
     auto og = view->get_output()->get_relative_geometry();
     glm::mat4 depth_scale = glm::scale(glm::mat4(1.0), {1, 1, 2.0 / std::min(og.width, og.height)});
     return translation * view_proj * depth_scale * rotation * scaling;
 }
 
-wf_pointf wf_3D_view::local_to_transformed_point(wf_geometry geometry, wf_pointf point)
+wf::pointf_t wf::view_3D::local_to_transformed_point(
+    wf::geometry_t geometry, wf::pointf_t point)
 {
     auto p = get_center_relative_coords(geometry, point);
     glm::vec4 v(1.0f * p.x, 1.0f * p.y, 0, 1);
@@ -200,14 +203,15 @@ wf_pointf wf_3D_view::local_to_transformed_point(wf_geometry geometry, wf_pointf
 }
 
 /* TODO: is there a way to realiably reverse projective transformations? */
-wf_pointf wf_3D_view::transformed_to_local_point(wf_geometry geometry, wf_pointf point)
+wf::pointf_t wf::view_3D::transformed_to_local_point(
+    wf::geometry_t geometry, wf::pointf_t point)
 {
     return {wf::compositor_core_t::invalid_coordinate,
         wf::compositor_core_t::invalid_coordinate};
 }
 
-void wf_3D_view::render_box(uint32_t src_tex, wlr_box src_box,
-    wlr_box scissor_box, const wf_framebuffer& fb)
+void wf::view_3D::render_box(uint32_t src_tex, wlr_box src_box,
+    wlr_box scissor_box, const wf::framebuffer_t& fb)
 {
     auto quad = center_geometry(fb.geometry, src_box, get_center(src_box));
 

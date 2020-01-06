@@ -1,10 +1,11 @@
-#include "debug.hpp"
-#include "core.hpp"
+#include <wayfire/util/log.hpp>
+#include <wayfire/debug.hpp>
+#include "wayfire/core.hpp"
 #include "surface-impl.hpp"
-#include "output.hpp"
-#include "decorator.hpp"
+#include "wayfire/output.hpp"
+#include "wayfire/decorator.hpp"
 #include "xdg-shell.hpp"
-#include "output-layout.hpp"
+#include "wayfire/output-layout.hpp"
 
 template<class XdgPopupVersion>
 wayfire_xdg_popup<XdgPopupVersion>::wayfire_xdg_popup(XdgPopupVersion *popup)
@@ -64,7 +65,7 @@ wayfire_xdg_popup<XdgPopupVersion>::~wayfire_xdg_popup()
 }
 
 template<class XdgPopupVersion>
-wf_point wayfire_xdg_popup<XdgPopupVersion>::get_window_offset()
+wf::point_t wayfire_xdg_popup<XdgPopupVersion>::get_window_offset()
 {
     return {
         popup->base->geometry.x,
@@ -73,13 +74,13 @@ wf_point wayfire_xdg_popup<XdgPopupVersion>::get_window_offset()
 }
 
 template<class XdgPopupVersion>
-wf_point wayfire_xdg_popup<XdgPopupVersion>::get_offset()
+wf::point_t wayfire_xdg_popup<XdgPopupVersion>::get_offset()
 {
     auto parent = dynamic_cast<wf::wlr_surface_base_t*>(
         wf::wf_surface_from_void(popup->parent->data));
     assert(parent);
 
-    wf_point popup_offset = {
+    wf::point_t popup_offset = {
         popup->geometry.x,
         popup->geometry.y,
     };
@@ -107,7 +108,7 @@ void create_xdg_popup_templ(XdgPopupVersion *popup)
     auto parent = wf::wf_surface_from_void(popup->parent->data);
     if (!parent)
     {
-        log_error("attempting to create a popup with unknown parent");
+        LOGE("attempting to create a popup with unknown parent");
         return;
     }
 
@@ -126,9 +127,8 @@ template<class XdgToplevelVersion>
 wayfire_xdg_view<XdgToplevelVersion>::wayfire_xdg_view(XdgToplevelVersion *top)
     : wf::wlr_view_t(), xdg_toplevel(top)
 {
-    log_info ("new xdg_shell_stable surface: %s app-id: %s",
-              nonull(xdg_toplevel->title),
-              nonull(xdg_toplevel->app_id));
+    LOGI("new xdg_shell_stable surface: ", xdg_toplevel->title,
+        " app-id: ", xdg_toplevel->app_id);
 
     handle_title_changed(nonull(xdg_toplevel->title));
     handle_app_id_changed(nonull(xdg_toplevel->app_id));
@@ -194,10 +194,10 @@ template<class XdgToplevelVersion>
 wayfire_xdg_view<XdgToplevelVersion>::~wayfire_xdg_view() {}
 
 template<class XdgToplevelVersion>
-wf_geometry get_xdg_geometry(XdgToplevelVersion *toplevel);
+wf::geometry_t get_xdg_geometry(XdgToplevelVersion *toplevel);
 
 template<>
-wf_geometry get_xdg_geometry<wlr_xdg_toplevel>(wlr_xdg_toplevel *toplevel)
+wf::geometry_t get_xdg_geometry<wlr_xdg_toplevel>(wlr_xdg_toplevel *toplevel)
 {
     wlr_box xdg_geometry;
     wlr_xdg_surface_get_geometry(toplevel->base, &xdg_geometry);
@@ -205,7 +205,7 @@ wf_geometry get_xdg_geometry<wlr_xdg_toplevel>(wlr_xdg_toplevel *toplevel)
 }
 
 template<>
-wf_geometry get_xdg_geometry<wlr_xdg_toplevel_v6>(wlr_xdg_toplevel_v6 *toplevel)
+wf::geometry_t get_xdg_geometry<wlr_xdg_toplevel_v6>(wlr_xdg_toplevel_v6 *toplevel)
 {
     wlr_box xdg_geometry;
     wlr_xdg_surface_v6_get_geometry(toplevel->base, &xdg_geometry);
@@ -241,13 +241,13 @@ void wayfire_xdg_view<XdgToplevelVersion>::commit()
 }
 
 template<class XdgToplevelVersion>
-wf_point wayfire_xdg_view<XdgToplevelVersion>::get_window_offset()
+wf::point_t wayfire_xdg_view<XdgToplevelVersion>::get_window_offset()
 {
     return xdg_surface_offset;
 }
 
 template<class XdgToplevelVersion>
-wf_geometry wayfire_xdg_view<XdgToplevelVersion>::get_wm_geometry()
+wf::geometry_t wayfire_xdg_view<XdgToplevelVersion>::get_wm_geometry()
 {
     if (!is_mapped())
         return get_output_geometry();
@@ -255,7 +255,7 @@ wf_geometry wayfire_xdg_view<XdgToplevelVersion>::get_wm_geometry()
     auto output_g = get_output_geometry();
     auto xdg_geometry = get_xdg_geometry(xdg_toplevel);
 
-    wf_geometry wm = {
+    wf::geometry_t wm = {
         output_g.x + xdg_surface_offset.x,
         output_g.y + xdg_surface_offset.y,
         xdg_geometry.width,

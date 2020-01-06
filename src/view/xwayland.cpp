@@ -1,9 +1,10 @@
-#include "debug.hpp"
-#include "core.hpp"
-#include "output.hpp"
-#include "workspace-manager.hpp"
-#include "decorator.hpp"
-#include "output-layout.hpp"
+#include "wayfire/debug.hpp"
+#include <wayfire/util/log.hpp>
+#include "wayfire/core.hpp"
+#include "wayfire/output.hpp"
+#include "wayfire/workspace-manager.hpp"
+#include "wayfire/decorator.hpp"
+#include "wayfire/output-layout.hpp"
 #include "../core/core-impl.hpp"
 #include "view-impl.hpp"
 
@@ -35,12 +36,11 @@ class wayfire_xwayland_view_base : public wf::wlr_view_t
     /** The geometry requested by the client */
     bool self_positioned = false;
 
-    wf::signal_callback_t output_geometry_changed =
-        [this] (wf::signal_data_t*)
+    wf::signal_connection_t output_geometry_changed{[this] (wf::signal_data_t*)
     {
         if (is_mapped())
             move(geometry.x, geometry.y);
-    };
+    }};
 
     public:
 
@@ -91,11 +91,7 @@ class wayfire_xwayland_view_base : public wf::wlr_view_t
     virtual void destroy() override
     {
         this->xw = nullptr;
-        if (get_output())
-        {
-            get_output()->disconnect_signal(
-                "output-configuration-changed", &output_geometry_changed);
-        }
+        output_geometry_changed.disconnect();
 
         on_map.disconnect();
         on_unmap.disconnect();
@@ -107,7 +103,7 @@ class wayfire_xwayland_view_base : public wf::wlr_view_t
         wf::wlr_view_t::destroy();
     }
 
-    virtual void configure_request(wf_geometry configure_geometry)
+    virtual void configure_request(wf::geometry_t configure_geometry)
     {
         /* Wayfire positions views relative to their output, but Xwayland
          * windows have a global positioning. So, we need to make sure that we
@@ -122,9 +118,11 @@ class wayfire_xwayland_view_base : public wf::wlr_view_t
             /* It is possible the client requests to position itself on another
              * output. However, we want to make sure that the view stays on its
              * output, since this is how Wayland works */
-            configure_geometry =
-                clamp(configure_geometry, get_output()->get_relative_geometry());
+            configure_geometry = wf::clamp(configure_geometry,
+                get_output()->get_relative_geometry());
         }
+
+        send_configure(configure_geometry.width, configure_geometry.height);
 
         if (view_impl->frame)
         {
@@ -133,7 +131,6 @@ class wayfire_xwayland_view_base : public wf::wlr_view_t
         }
 
         set_geometry(configure_geometry);
-        send_configure(configure_geometry.width, configure_geometry.height);
     }
 
     virtual void close() override
@@ -151,7 +148,7 @@ class wayfire_xwayland_view_base : public wf::wlr_view_t
         {
             /* such a configure request would freeze xwayland.
              * This is most probably a bug somewhere in the compositor. */
-            log_error("Configuring a xwayland surface with width/height <0");
+            LOGE("Configuring a xwayland surface with width/height <0");
             return;
         }
 
@@ -185,12 +182,7 @@ class wayfire_xwayland_view_base : public wf::wlr_view_t
 
     virtual void set_output(wf::output_t *wo) override
     {
-        if (get_output())
-        {
-            get_output()->disconnect_signal("output-configuration-changed",
-                &output_geometry_changed);
-        }
-
+        output_geometry_changed.disconnect();
         wlr_view_t::set_output(wo);
 
         if (wo)
@@ -212,7 +204,6 @@ class wayfire_unmanaged_xwayland_view : public wayfire_xwayland_view_base
 
     void commit() override;
     void map(wlr_surface *surface)override;
-    void unmap()override;
 
     ~wayfire_unmanaged_xwayland_view() { }
 };
@@ -226,8 +217,8 @@ class wayfire_xwayland_view : public wayfire_xwayland_view_base
     wayfire_xwayland_view(wlr_xwayland_surface *xww)
         : wayfire_xwayland_view_base(xww)
     {
-        log_info("new xwayland surface %s class: %s instance: %s",
-            nonull(xw->title), nonull(xw->class_t), nonull(xw->instance));
+        LOGE("new xwayland surface ", xw->title,
+            " class: ", xw->class_t, " instance: ", xw->instance);
 
         on_request_move.set_callback([&] (void*) { move_request(); });
         on_request_resize.set_callback([&] (void*) { resize_request(); });
@@ -300,12 +291,12 @@ class wayfire_xwayland_view : public wayfire_xwayland_view_base
             if (xw->width > 0 && xw->height > 0)
             {
                 /* Save geometry which the window has put itself in */
-                wf_geometry save_geometry = {
+                wf::geometry_t save_geometry = {
                     xw->x, xw->y, xw->width, xw->height
                 };
 
                 /* Make sure geometry is properly visible on the view output */
-                save_geometry = clamp(save_geometry,
+                save_geometry = wf::clamp(save_geometry,
                     get_output()->workspace->get_workarea());
                 this->view_impl->last_windowed_geometry = save_geometry;
             }
@@ -403,10 +394,9 @@ class wayfire_xwayland_view : public wayfire_xwayland_view_base
         auto default_app_id = get_app_id();
         auto instance_app_id = nonull(xw->instance);
 
-        auto app_id_mode = (*wf::get_core().config)["workarounds"]
-            ->get_option("app_id_mode", "stock");
-
-        if (app_id_mode->as_string() == "full") {
+        std::string app_id_mode =
+            wf::option_wrapper_t<std::string> ("workarounds/app_id_mode");
+        if (app_id_mode == "full") {
             app_id = default_app_id + " " + instance_app_id;
         } else {
             app_id = default_app_id;
@@ -427,8 +417,8 @@ wayfire_unmanaged_xwayland_view::
 wayfire_unmanaged_xwayland_view(wlr_xwayland_surface *xww)
     : wayfire_xwayland_view_base(xww)
 {
-    log_info("new unmanaged xwayland surface %s class: %s instance: %s",
-             nonull(xw->title), nonull(xw->class_t), nonull(xw->instance));
+    LOGE("new unmanaged xwayland surface ", xw->title, " class: ", xw->class_t,
+        " instance: ", xw->instance);
 
     xw->data = this;
     role = wf::VIEW_ROLE_UNMANAGED;
@@ -516,16 +506,6 @@ void wayfire_unmanaged_xwayland_view::map(wlr_surface *surface)
     }
 }
 
-void wayfire_unmanaged_xwayland_view::unmap()
-{
-    /* O-R focuseable views are treated like normal windows, i.e they have the
-     * pre-unmap event and have unmap animations */
-    if (view_impl->keyboard_focus_enabled)
-        emit_view_pre_unmap();
-
-    wf::wlr_view_t::unmap();
-}
-
 static wlr_xwayland *xwayland_handle = nullptr;
 #endif
 
@@ -533,9 +513,9 @@ void wf::init_xwayland()
 {
 #if WLR_HAS_XWAYLAND
     static wf::wl_listener_wrapper on_created;
-    static signal_callback_t on_shutdown = [&] (void*) {
+    static signal_connection_t on_shutdown{[&] (void*) {
         wlr_xwayland_destroy(xwayland_handle);
-    };
+    }};
 
     on_created.set_callback([] (void *data) {
         auto xsurf = (wlr_xwayland_surface*) data;

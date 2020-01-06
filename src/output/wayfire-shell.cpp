@@ -1,15 +1,16 @@
 /**
  * Implementation of the wayfire-shell-unstable-v2 protocol
  */
-#include "output.hpp"
-#include "core.hpp"
-#include "debug.hpp"
-#include "output-layout.hpp"
-#include "render-manager.hpp"
+#include "wayfire/output.hpp"
+#include "wayfire/core.hpp"
+#include "wayfire/debug.hpp"
+#include "wayfire/output-layout.hpp"
+#include "wayfire/render-manager.hpp"
 #include "wayfire-shell.hpp"
 #include "wayfire-shell-unstable-v2-protocol.h"
-#include "signal-definitions.hpp"
+#include "wayfire/signal-definitions.hpp"
 #include "../view/view-impl.hpp"
+#include <wayfire/util/log.hpp>
 
 /* ----------------------------- wfs_hotspot -------------------------------- */
 static void handle_hotspot_destroy(wl_resource *resource);
@@ -21,7 +22,7 @@ static void handle_hotspot_destroy(wl_resource *resource);
 class wfs_hotspot : public noncopyable_t
 {
   private:
-    wf_geometry hotspot_geometry;
+    wf::geometry_t hotspot_geometry;
 
     bool hotspot_triggered = false;
     wf::wl_idle_call idle_check_input;
@@ -34,7 +35,7 @@ class wfs_hotspot : public noncopyable_t
     {
         idle_check_input.run_once([=] () {
             auto gcf = wf::get_core().get_cursor_position();
-            wf_point gc{(int)gcf.x, (int)gcf.y};
+            wf::point_t gc{(int)gcf.x, (int)gcf.y};
             process_input_motion(gc);
         });
     };
@@ -43,14 +44,14 @@ class wfs_hotspot : public noncopyable_t
     {
         idle_check_input.run_once([=] () {
             auto gcf = wf::get_core().get_touch_position(0);
-            wf_point gc{(int)gcf.x, (int)gcf.y};
+            wf::point_t gc{(int)gcf.x, (int)gcf.y};
             process_input_motion(gc);
         });
     };
 
     wf::signal_callback_t on_output_removed;
 
-    void process_input_motion(wf_point gc)
+    void process_input_motion(wf::point_t gc)
     {
         if (!(hotspot_geometry & gc))
         {
@@ -79,10 +80,10 @@ class wfs_hotspot : public noncopyable_t
         }
     }
 
-    wf_geometry calculate_hotspot_geometry(wf::output_t *output,
+    wf::geometry_t calculate_hotspot_geometry(wf::output_t *output,
         uint32_t edge_mask, uint32_t distance) const
     {
-        wf_geometry slot = output->get_layout_geometry();
+        wf::geometry_t slot = output->get_layout_geometry();
         if (edge_mask & ZWF_OUTPUT_V2_HOTSPOT_EDGE_TOP)
         {
             slot.height = distance;
@@ -408,7 +409,7 @@ wayfire_shell* wayfire_shell_create(wl_display *display)
 
     if (ws->shell_manager == NULL)
     {
-        log_error("Failed to create wayfire_shell interface");
+        LOGE("Failed to create wayfire_shell interface");
         return NULL;
     }
 

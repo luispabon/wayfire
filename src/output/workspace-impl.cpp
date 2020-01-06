@@ -1,14 +1,15 @@
-#include <view.hpp>
-#include <debug.hpp>
-#include <output.hpp>
-#include <core.hpp>
-#include <workspace-manager.hpp>
-#include <render-manager.hpp>
-#include <signal-definitions.hpp>
-#include <opengl.hpp>
+#include <wayfire/view.hpp>
+#include <wayfire/debug.hpp>
+#include <wayfire/output.hpp>
+#include <wayfire/core.hpp>
+#include <wayfire/workspace-manager.hpp>
+#include <wayfire/render-manager.hpp>
+#include <wayfire/signal-definitions.hpp>
+#include <wayfire/opengl.hpp>
 #include <list>
 #include <algorithm>
-#include <nonstd/reverse.hpp>
+#include <wayfire/nonstd/reverse.hpp>
+#include <wayfire/util/log.hpp>
 
 namespace wf
 {
@@ -151,11 +152,8 @@ class output_viewport_manager_t
     output_viewport_manager_t(output_t *output)
     {
         this->output = output;
-
-        auto section = wf::get_core().config->get_section("core");
-
-        vwidth  = *section->get_option("vwidth", "3");
-        vheight = *section->get_option("vheight", "3");
+        vwidth = wf::option_wrapper_t<int> ("core/vwidth");
+        vheight = wf::option_wrapper_t<int> ("core/vheight");
 
         vwidth = clamp(vwidth, 1, 20);
         vheight = clamp(vheight, 1, 20);
@@ -170,7 +168,7 @@ class output_viewport_manager_t
      *
      * @return true if the view is visible on the workspace vp
      */
-    bool view_visible_on(wayfire_view view, wf_point vp, bool use_bbox)
+    bool view_visible_on(wayfire_view view, wf::point_t vp, bool use_bbox)
     {
         auto g = output->get_relative_geometry();
         if (view->role != VIEW_ROLE_SHELL_VIEW)
@@ -189,11 +187,11 @@ class output_viewport_manager_t
     /**
      * Moves view geometry so that it is visible on the given workspace
      */
-    void move_to_workspace(wayfire_view view, wf_point ws)
+    void move_to_workspace(wayfire_view view, wf::point_t ws)
     {
         if (view->get_output() != output)
         {
-            log_error("Cannot ensure view visibility for a view from a different output!");
+            LOGE("Cannot ensure view visibility for a view from a different output!");
             return;
         }
 
@@ -221,7 +219,7 @@ class output_viewport_manager_t
         }
     }
 
-    std::vector<wayfire_view> get_views_on_workspace(wf_point vp,
+    std::vector<wayfire_view> get_views_on_workspace(wf::point_t vp,
         uint32_t layers_mask, bool wm_only)
     {
         /* get all views in the given layers */
@@ -237,22 +235,22 @@ class output_viewport_manager_t
         return views;
     }
 
-    wf_point get_current_workspace()
+    wf::point_t get_current_workspace()
     {
         return {current_vx, current_vy};
     }
 
-    wf_size_t get_workspace_grid_size()
+    wf::dimensions_t get_workspace_grid_size()
     {
         return {vwidth, vheight};
     }
 
-    void set_workspace(wf_point nws)
+    void set_workspace(wf::point_t nws)
     {
         if(nws.x >= vwidth || nws.y >= vheight || nws.x < 0 || nws.y < 0)
         {
-            log_error("Attempt to set invalid workspace: %d,%d,"
-                " workspace grid size is %dx%d", nws.x, nws.y, vwidth, vheight);
+            LOGE("Attempt to set invalid workspace: ", nws,
+                " workspace grid size is ", vwidth, "x", vheight);
             return;
         }
 
@@ -312,7 +310,7 @@ class output_viewport_manager_t
  */
 class output_workarea_manager_t
 {
-    wf_geometry current_workarea;
+    wf::geometry_t current_workarea;
     std::vector<workspace_manager::anchored_area*> anchors;
 
     output_t *output;
@@ -323,15 +321,15 @@ class output_workarea_manager_t
         this->current_workarea = output->get_relative_geometry();
     }
 
-    wf_geometry get_workarea()
+    wf::geometry_t get_workarea()
     {
         return current_workarea;
     }
 
-    wf_geometry calculate_anchored_geometry(const workspace_manager::anchored_area& area)
+    wf::geometry_t calculate_anchored_geometry(const workspace_manager::anchored_area& area)
     {
         auto wa = get_workarea();
-        wf_geometry target;
+        wf::geometry_t target;
 
         if (area.edge <= workspace_manager::ANCHORED_EDGE_BOTTOM)
         {
@@ -408,7 +406,7 @@ class output_workarea_manager_t
 class workspace_manager::impl
 {
     wf::output_t *output;
-    wf_geometry output_geometry;
+    wf::geometry_t output_geometry;
 
     signal_callback_t output_geometry_changed = [&] (void*)
     {
@@ -488,17 +486,17 @@ class workspace_manager::impl
         {
             sent_autohide = 1;
             output->emit_signal("autohide-panels", reinterpret_cast<signal_data_t*> (1));
-            log_debug("autohide panels");
+            LOGD("autohide panels");
         }
         else if (fs_views.empty() && sent_autohide)
         {
             sent_autohide = 0;
             output->emit_signal("autohide-panels", reinterpret_cast<signal_data_t*> (0));
-            log_debug("restore panels");
+            LOGD("restore panels");
         }
     }
 
-    void set_workspace(wf_point ws)
+    void set_workspace(wf::point_t ws)
     {
         viewport_manager.set_workspace(ws);
         check_autohide_panels();
@@ -554,7 +552,7 @@ class workspace_manager::impl
         uint32_t view_layer = layer_manager.get_view_layer(view);
         if (!view_layer)
         {
-            log_error ("trying to bring_to_front a view without a layer!");
+            LOGE ("trying to bring_to_front a view without a layer!");
             return;
         }
 
@@ -578,7 +576,7 @@ class workspace_manager::impl
     {
         if (!view || !below || view == below)
         {
-            log_error("Cannot restack a view on top of itself");
+            LOGE("Cannot restack a view on top of itself");
             return;
         }
 
@@ -586,13 +584,12 @@ class workspace_manager::impl
         uint32_t below_layer = layer_manager.get_view_layer(below);
         if (view_layer == 0 || below_layer == 0 || view_layer != below_layer)
         {
-            log_error("restacking views from different layers(%d vs %d!)",
-                view_layer, below_layer);
+            LOGE("restacking views from different layers(",
+                view_layer, " vs ", below_layer, ")!");
             return;
         }
 
-        log_info("restack %s on top of %s", view->get_title().c_str(),
-            below->get_title().c_str());
+        LOGI("restack ", view->get_title(), " on top of ", below->get_title());
 
         /* If we restack on top of the front-most view, then this can
          * potentially change fullscreen state. So in this case use the
@@ -610,7 +607,7 @@ class workspace_manager::impl
     {
         if (!view || !above || view == above)
         {
-            log_error("Cannot restack a view on top of itself");
+            LOGE("Cannot restack a view on top of itself");
             return;
         }
 
@@ -618,8 +615,8 @@ class workspace_manager::impl
         uint32_t below_layer = layer_manager.get_view_layer(above);
         if (view_layer == 0 || below_layer == 0 || view_layer != below_layer)
         {
-            log_error("restacking views from different layers(%d vs %d!)",
-                view_layer, below_layer);
+            LOGE("restacking views from different layers(",
+                view_layer, " vs ", below_layer, "!)");
             return;
         }
 
@@ -655,11 +652,11 @@ workspace_manager::workspace_manager(output_t *wo) : pimpl(new impl(wo)) {}
 workspace_manager::~workspace_manager() = default;
 
 /* Just pass to the appropriate function from above */
-bool workspace_manager::view_visible_on(wayfire_view view, wf_point ws) { return pimpl->viewport_manager.view_visible_on(view, ws, true); }
-std::vector<wayfire_view> workspace_manager::get_views_on_workspace(wf_point ws, uint32_t layer_mask, bool wm_only)
+bool workspace_manager::view_visible_on(wayfire_view view, wf::point_t ws) { return pimpl->viewport_manager.view_visible_on(view, ws, true); }
+std::vector<wayfire_view> workspace_manager::get_views_on_workspace(wf::point_t ws, uint32_t layer_mask, bool wm_only)
 { return pimpl->viewport_manager.get_views_on_workspace(ws, layer_mask, wm_only); }
 
-void workspace_manager::move_to_workspace(wayfire_view view, wf_point ws) { return pimpl->viewport_manager.move_to_workspace(view, ws); }
+void workspace_manager::move_to_workspace(wayfire_view view, wf::point_t ws) { return pimpl->viewport_manager.move_to_workspace(view, ws); }
 
 void workspace_manager::add_view(wayfire_view view, layer_t layer) { return pimpl->add_view_to_layer(view, layer); }
 void workspace_manager::bring_to_front(wayfire_view view) { return pimpl->bring_to_front(view); }
@@ -673,12 +670,12 @@ workspace_implementation_t* workspace_manager::get_workspace_implementation() { 
 bool workspace_manager::set_workspace_implementation(std::unique_ptr<workspace_implementation_t> impl, bool overwrite)
 { return pimpl->set_implementation(std::move(impl), overwrite); }
 
-void workspace_manager::set_workspace(wf_point ws) { return pimpl->set_workspace(ws); }
-wf_point workspace_manager::get_current_workspace() { return pimpl->viewport_manager.get_current_workspace(); }
-wf_size_t workspace_manager::get_workspace_grid_size() { return pimpl->viewport_manager.get_workspace_grid_size(); }
+void workspace_manager::set_workspace(wf::point_t ws) { return pimpl->set_workspace(ws); }
+wf::point_t workspace_manager::get_current_workspace() { return pimpl->viewport_manager.get_current_workspace(); }
+wf::dimensions_t workspace_manager::get_workspace_grid_size() { return pimpl->viewport_manager.get_workspace_grid_size(); }
 
 void workspace_manager::add_reserved_area(anchored_area *area) { return pimpl->workarea_manager.add_reserved_area(area); }
 void workspace_manager::remove_reserved_area(anchored_area *area) { return pimpl->workarea_manager.remove_reserved_area(area); }
 void workspace_manager::reflow_reserved_areas() { return pimpl->workarea_manager.reflow_reserved_areas(); }
-wf_geometry workspace_manager::get_workarea() { return pimpl->workarea_manager.get_workarea(); }
+wf::geometry_t workspace_manager::get_workarea() { return pimpl->workarea_manager.get_workarea(); }
 } // namespace wf

@@ -1,8 +1,8 @@
-#include "compositor-view.hpp"
-#include "render-manager.hpp"
-#include "output.hpp"
-#include "core.hpp"
-#include "debug.hpp"
+#include "wayfire/compositor-view.hpp"
+#include "wayfire/render-manager.hpp"
+#include "wayfire/output.hpp"
+#include "wayfire/core.hpp"
+#include "wayfire/debug.hpp"
 
 extern "C"
 {
@@ -16,7 +16,7 @@ extern "C"
 class test_view : public wayfire_compositor_view_t, public wayfire_compositor_interactive_view
 {
     public:
-        virtual void _wlr_render_box(const wf_framebuffer& fb, int x, int y, const wlr_box& scissor)
+        virtual void _wlr_render_box(const wf::framebuffer_t& fb, int x, int y, const wlr_box& scissor)
         {
             wlr_box g {x, y, geometry.width, geometry.height};
             geometry = fb.damage_box_from_geometry_box(g);
@@ -46,7 +46,7 @@ class test_view : public wayfire_compositor_view_t, public wayfire_compositor_in
 
 class wayfire_cvtest : public wayfire_plugin_t
 {
-    key_callback binding;
+    wf::key_callback binding;
     public:
         void init(wayfire_config *config)
         {

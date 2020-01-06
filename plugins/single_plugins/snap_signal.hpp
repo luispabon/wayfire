@@ -6,7 +6,7 @@
  * It is used to provide autosnap functionality for the move plugin,
  * by reusing grid's abilities */
 
-#include <view.hpp>
+#include <wayfire/view.hpp>
 
 /* The "slot" where the view should be snapped */
 enum slot_type {
@@ -25,7 +25,7 @@ enum slot_type {
 struct snap_query_signal : public wf::signal_data_t
 {
     slot_type slot;
-    wf_geometry out_geometry;
+    wf::geometry_t out_geometry;
 };
 
 /* Do snap the view to the given slot */

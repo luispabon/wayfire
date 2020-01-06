@@ -2,12 +2,12 @@
 #include "touch.hpp"
 #include "../core-impl.hpp"
 #include "input-manager.hpp"
-#include "workspace-manager.hpp"
-#include "debug.hpp"
-#include "compositor-surface.hpp"
-#include "output-layout.hpp"
+#include "wayfire/workspace-manager.hpp"
+#include "wayfire/debug.hpp"
+#include "wayfire/compositor-surface.hpp"
+#include "wayfire/output-layout.hpp"
 #include "tablet.hpp"
-#include "signal-definitions.hpp"
+#include "wayfire/signal-definitions.hpp"
 
 extern "C" {
 #include <wlr/util/region.h>
@@ -81,6 +81,8 @@ void wf_cursor::setup_listeners()
                 static_cast<wf::tablet_t*> (ev->device->tablet->data); \
             tablet->handle_##evname (ev); \
         } \
+        wlr_idle_notify_activity(wf::get_core().protocols.idle, \
+            wf::get_core().get_current_seat()); \
     }); \
     on_tablet_##evname.connect(&cursor->events.tablet_tool_##evname);
 
@@ -93,17 +95,14 @@ void wf_cursor::setup_listeners()
 
 void wf_cursor::init_xcursor()
 {
-    auto section = wf::get_core().config->get_section("input");
-
-    auto theme = section->get_option("cursor_theme", "default")->as_string();
-    auto size = section->get_option("cursor_size", "24");
-
+    std::string theme = wf::option_wrapper_t<std::string> ("input/cursor_theme");
+    int size = wf::option_wrapper_t<int> ("input/cursor_size");
     auto theme_ptr = (theme == "default") ? NULL : theme.c_str();
 
     if (xcursor)
         wlr_xcursor_manager_destroy(xcursor);
 
-    xcursor = wlr_xcursor_manager_create(theme_ptr, size->as_int());
+    xcursor = wlr_xcursor_manager_create(theme_ptr, size);
     wlr_xcursor_manager_load(xcursor, 1);
 
     set_cursor("default");
@@ -132,12 +131,12 @@ void wf_cursor::hide_cursor()
     wlr_cursor_set_surface(cursor, NULL, 0, 0);
 }
 
-void wf_cursor::warp_cursor(wf_pointf point)
+void wf_cursor::warp_cursor(wf::pointf_t point)
 {
     wlr_cursor_warp_closest(cursor, NULL, point.x, point.y);
 }
 
-wf_pointf wf_cursor::get_cursor_position()
+wf::pointf_t wf_cursor::get_cursor_position()
 {
     return {cursor->x, cursor->y};
 }

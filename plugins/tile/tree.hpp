@@ -1,7 +1,7 @@
 #ifndef WF_TILE_PLUGIN_TREE
 #define WF_TILE_PLUGIN_TREE
 
-#include <view.hpp>
+#include <wayfire/view.hpp>
 
 namespace wf {
 namespace tile {
@@ -26,10 +26,10 @@ struct tree_node_t
     std::vector<std::unique_ptr<tree_node_t>> children;
 
     /** The geometry occupied by the node */
-    wf_geometry geometry;
+    wf::geometry_t geometry;
 
     /** Set the geometry available for the node and its subnodes. */
-    virtual void set_geometry(wf_geometry geometry);
+    virtual void set_geometry(wf::geometry_t geometry);
     virtual ~tree_node_t() {};
 
     /** Simply dynamic cast this to a split_node_t */
@@ -75,7 +75,7 @@ struct split_node_t : public tree_node_t
      * resize the children nodes, so that they fit inside the new geometry and
      * have a size proportional to their old size.
      */
-    void set_geometry(wf_geometry geometry);
+    void set_geometry(wf::geometry_t geometry);
 
     split_node_t(split_direction_t direction);
     split_direction_t get_split_direction() const;
@@ -87,7 +87,7 @@ struct split_node_t : public tree_node_t
      * Resize the children so that they fit inside the given
      * available_geometry.
      */
-    void recalculate_children(wf_geometry available_geometry);
+    void recalculate_children(wf::geometry_t available_geometry);
 
     /**
      * Calculate the geometry of a child if it has child_size as one
@@ -98,13 +98,13 @@ struct split_node_t : public tree_node_t
      *
      * @return The geometry of the child, in global coordinates
      */
-    wf_geometry get_child_geometry(int32_t child_pos, int32_t child_size);
+    wf::geometry_t get_child_geometry(int32_t child_pos, int32_t child_size);
 
     /** Return the size of the node in the dimension in which the split happens */
     int32_t calculate_splittable() const;
     /** Return the size of the geometry in the dimension in which the split
      * happens */
-    int32_t calculate_splittable(wf_geometry geometry) const;
+    int32_t calculate_splittable(wf::geometry_t geometry) const;
 };
 
 /**
@@ -123,7 +123,7 @@ struct view_node_t : public tree_node_t
      * geometry of the node. For example, a fullscreen view will always have
      * the geometry of the whole output.
      */
-    void set_geometry(wf_geometry geometry) override;
+    void set_geometry(wf::geometry_t geometry) override;
 
     /* Return the tree node corresponding to the view, or nullptr if none */
     static nonstd::observer_ptr<view_node_t> get_node(wayfire_view view);
@@ -133,7 +133,7 @@ struct view_node_t : public tree_node_t
     nonstd::observer_ptr<scale_transformer_t> transformer;
     signal_callback_t on_geometry_changed, on_decoration_changed;
 
-    wf_geometry calculate_target_geometry();
+    wf::geometry_t calculate_target_geometry();
     void update_transformer();
 };
 
@@ -157,8 +157,8 @@ nonstd::observer_ptr<split_node_t> get_root( nonstd::observer_ptr<tree_node_t> n
  * Transform coordinates from the tiling trees coordinate system to output-local
  * coordinates.
  */
-wf_geometry get_output_local_coordinates(wf::output_t *output, wf_geometry g);
-wf_point get_output_local_coordinates(wf::output_t *output, wf_point g);
+wf::geometry_t get_output_local_coordinates(wf::output_t *output, wf::geometry_t g);
+wf::point_t get_output_local_coordinates(wf::output_t *output, wf::point_t g);
 
 
 }
