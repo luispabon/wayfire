@@ -7,6 +7,9 @@
 #include <memory>
 
 #include "wayfire/geometry.hpp"
+extern "C"{
+struct wlr_surface;
+}
 
 namespace wf
 {
@@ -147,9 +150,14 @@ class surface_interface_t
 
     /**
      * @return the wl_client associated with this surface, or null if the
-     *         surface doesn't have a backing wlr_surface.
+     *   surface doesn't have a backing wlr_surface.
      */
     virtual wl_client *get_client();
+
+    /**
+     * @return the wlr_surface associated with this surface, or null if no
+     *   the surface doesn't have a backing wlr_surface. */
+    virtual wlr_surface *get_wlr_surface();
 
     /**
      * Render the surface, without applying any transformations.
@@ -178,12 +186,20 @@ class surface_interface_t
     /** @return the active shrink constraint */
     static int get_active_shrink_constraint();
 
+    /** Damage the given box, in surface-local coordinates */
+    virtual void damage_surface_box(const wlr_box& box);
+    /** Damage the given region, in surface-local coordinates */
+    virtual void damage_surface_region(const wf::region_t& region);
+
     /**
      * Called when the reference count reaches 0.
      * It destructs the object and deletes it, so "this" may not be
      * accessed after calling destruct().
      */
     virtual void destruct();
+
+    /* Allow wlr surface implementation to access surface internals */
+    friend class wlr_surface_base_t;
 };
 void emit_map_state_change(wf::surface_interface_t *surface);
 }

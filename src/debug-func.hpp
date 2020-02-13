@@ -8,7 +8,7 @@
 
 #define max_frames 100
 
-void wf_print_trace()
+void wf::print_trace()
 {
     LOGE("stack trace");
 
@@ -63,6 +63,6 @@ void wf_print_trace()
 
 void signalHandle(int sig) {
     LOGE("crash detected!");
-    wf_print_trace();
+    wf::print_trace();
     raise(SIGTRAP);
 }

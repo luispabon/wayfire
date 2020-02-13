@@ -75,12 +75,15 @@ class compositor_core_impl_t : public compositor_core_t
     int focus_layer(uint32_t layer, int request) override;
     void unfocus_layer(int request) override;
     uint32_t get_focused_layer() override;
+    int get_xwayland_display() override;
     void run(std::string command) override;
 
   private:
     wf::wl_listener_wrapper output_layout_changed;
     wf::wl_listener_wrapper decoration_created;
+    wf::wl_listener_wrapper xdg_decoration_created;
     wf::wl_listener_wrapper vkbd_created;
+    wf::wl_listener_wrapper vptr_created;
     wf::wl_listener_wrapper input_inhibit_activated;
     wf::wl_listener_wrapper input_inhibit_deactivated;
     wf::wl_listener_wrapper pointer_constraint_added;

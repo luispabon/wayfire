@@ -15,6 +15,10 @@
 		<_short>DPMS Timeout</_short>
 		<default>-1</default>
 	</option>
+  <option name="disable_dpms_on_fullscreen" type="bool">
+    <_short>Disable DPMS when fullscreen</_short>
+    <default>true</default>
+  </option>
 	<option name="cube_zoom_speed" type="int">
 		<_short>Cube Zoom Speed</_short>
 		<default>1000</default>

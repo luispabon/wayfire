@@ -4,6 +4,7 @@ extern "C"
 #include <wlr/types/wlr_data_control_v1.h>
 #include <wlr/types/wlr_data_device.h>
 #include <wlr/types/wlr_virtual_keyboard_v1.h>
+#include <wlr/types/wlr_virtual_pointer_v1.h>
 #include <wlr/types/wlr_foreign_toplevel_management_v1.h>
 #include <wlr/types/wlr_idle.h>
 #include <wlr/types/wlr_idle_inhibit_v1.h>
@@ -11,6 +12,7 @@ extern "C"
 #include <wlr/types/wlr_linux_dmabuf_v1.h>
 #include <wlr/types/wlr_export_dmabuf_v1.h>
 #include <wlr/types/wlr_server_decoration.h>
+#include <wlr/types/wlr_xdg_decoration_v1.h>
 #include <wlr/types/wlr_gamma_control_v1.h>
 #include <wlr/types/wlr_xdg_output_v1.h>
 #include <wlr/types/wlr_screencopy_v1.h>
@@ -75,6 +77,57 @@ struct wf_server_decoration_t
         on_destroy.connect(&decor->events.destroy);
         /* Read initial decoration settings */
         mode_set(NULL);
+    }
+};
+
+struct wf_xdg_decoration_t
+{
+    wlr_xdg_toplevel_decoration_v1 *decor;
+    wf::wl_listener_wrapper on_mode_request, on_commit, on_destroy;
+
+    std::function<void(void*)> mode_request = [&] (void*)
+    {
+        wf::option_wrapper_t<std::string>
+            deco_mode{"core/preferred_decoration_mode"};
+        wlr_xdg_toplevel_decoration_v1_mode default_mode =
+            WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE;
+        if ((std::string)deco_mode == "server")
+            default_mode = WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE;
+
+        auto mode = decor->client_pending_mode;
+        if (mode == WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_NONE)
+            mode = default_mode;
+
+        wlr_xdg_toplevel_decoration_v1_set_mode(decor, mode);
+    };
+
+    std::function<void(void*)> commit = [&] (void*)
+    {
+        bool use_csd =
+            decor->current_mode == WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE;
+        wf::get_core_impl().uses_csd[decor->surface->surface] = use_csd;
+
+        auto wf_surface = dynamic_cast<wf::wlr_view_t*> (
+            wf::wf_surface_from_void(decor->surface->data));
+        if (wf_surface)
+            wf_surface->set_decoration_mode(use_csd);
+    };
+
+    wf_xdg_decoration_t(wlr_xdg_toplevel_decoration_v1 *_decor)
+        : decor(_decor)
+    {
+        on_mode_request.set_callback(mode_request);
+        on_commit.set_callback(commit);
+        on_destroy.set_callback([&] (void *) {
+            wf::get_core_impl().uses_csd.erase(decor->surface->surface);
+            delete this;
+        });
+
+        on_mode_request.connect(&decor->events.request_mode);
+        on_commit.connect(&decor->surface->surface->events.commit);
+        on_destroy.connect(&decor->events.destroy);
+        /* Read initial decoration settings */
+        mode_request(NULL);
     }
 };
 
@@ -144,13 +197,25 @@ void wf::compositor_core_impl_t::init()
 
     /* decoration_manager setup */
     protocols.decorator_manager = wlr_server_decoration_manager_create(display);
+    wf::option_wrapper_t<std::string>
+        deco_mode{"core/preferred_decoration_mode"};
+    uint32_t default_mode = WLR_SERVER_DECORATION_MANAGER_MODE_CLIENT;
+    if ((std::string)deco_mode == "server")
+        default_mode = WLR_SERVER_DECORATION_MANAGER_MODE_SERVER;
     wlr_server_decoration_manager_set_default_mode(protocols.decorator_manager,
-                                                   WLR_SERVER_DECORATION_MANAGER_MODE_CLIENT);
+        default_mode);
 
     decoration_created.set_callback([&] (void* data) {
         /* will be freed by the destroy request */
         new wf_server_decoration_t((wlr_server_decoration*)(data));});
     decoration_created.connect(&protocols.decorator_manager->events.new_decoration);
+
+    protocols.xdg_decorator = wlr_xdg_decoration_manager_v1_create(display);
+
+    xdg_decoration_created.set_callback([&] (void* data) {
+        /* will be freed by the destroy request */
+        new wf_xdg_decoration_t((wlr_xdg_toplevel_decoration_v1*)(data));});
+    xdg_decoration_created.connect(&protocols.xdg_decorator->events.new_toplevel_decoration);
 
     protocols.vkbd_manager = wlr_virtual_keyboard_manager_v1_create(display);
     vkbd_created.set_callback([&] (void *data) {
@@ -158,6 +223,14 @@ void wf::compositor_core_impl_t::init()
         input->handle_new_input(&kbd->input_device);
     });
     vkbd_created.connect(&protocols.vkbd_manager->events.new_virtual_keyboard);
+
+    protocols.vptr_manager = wlr_virtual_pointer_manager_v1_create(display);
+    vptr_created.set_callback([&] (void *data) {
+        auto event = (wlr_virtual_pointer_v1_new_pointer_event*) data;
+        auto ptr = event->new_pointer;
+        input->handle_new_input(&ptr->input_device);
+    });
+    vptr_created.connect(&protocols.vptr_manager->events.new_virtual_pointer);
 
     protocols.idle = wlr_idle_create(display);
     protocols.idle_inhibit = wlr_idle_inhibit_v1_create(display);
@@ -273,7 +346,8 @@ void wf::compositor_core_impl_t::focus_output(wf::output_t *wo)
     if (active_output == wo)
         return;
 
-    wo->ensure_pointer();
+    /* Move to the middle of the output if this is the first output */
+    wo->ensure_pointer((active_output == nullptr));
 
     wf::plugin_grab_interface_t *old_grab = nullptr;
     if (active_output)
@@ -284,7 +358,6 @@ void wf::compositor_core_impl_t::focus_output(wf::output_t *wo)
     }
 
     active_output = wo;
-    LOGD("focusing ", wo);
     if (wo)
     {
         LOGD("focus output: ", wo->handle->name);
@@ -373,8 +446,14 @@ void wf::compositor_core_impl_t::unfocus_layer(int request)
 void wf::compositor_core_impl_t::add_view(
     std::unique_ptr<wf::view_interface_t> view)
 {
+    auto v = view->self(); /* non-owning copy */
     views.push_back(std::move(view));
+
     assert(active_output);
+    if (!v->get_output())
+        v->set_output(active_output);
+
+    v->initialize();
 }
 
 /* sets the "active" view and gives it keyboard focus
@@ -393,6 +472,8 @@ void wf::compositor_core_impl_t::set_active_view(wayfire_view new_focus)
     if (new_focus && !new_focus->is_mapped())
         new_focus = nullptr;
 
+    /* Descend into frontmost child view */
+    new_focus = new_focus ? new_focus->enumerate_views().front() : nullptr;
     bool refocus = (input->keyboard_focus == new_focus);
 
     /* don't deactivate view if the next focus is not a toplevel */
@@ -404,7 +485,7 @@ void wf::compositor_core_impl_t::set_active_view(wayfire_view new_focus)
             input->keyboard_focus->set_activated(false);
         }
 
-        /* make sure to deactivate the lastly activated toplevel */
+        /* make sure to deactivate the last activated toplevel */
         if (last_active_toplevel && new_focus != last_active_toplevel)
             last_active_toplevel->set_activated(false);
     }
@@ -414,11 +495,8 @@ void wf::compositor_core_impl_t::set_active_view(wayfire_view new_focus)
     {
         input->set_keyboard_focus(new_focus, seat);
 
-        /* Don't resend activated if focusing the exact same view, some Xwayland
-         * programs have problems with this.
-         *
-         * And we need to check that the view was actually focused */
-        if (!refocus && input->keyboard_focus == new_focus)
+        /* Check that the view was actually focused */
+        if (input->keyboard_focus == new_focus)
             new_focus->set_activated(true);
     } else
     {
@@ -448,7 +526,7 @@ void wf::compositor_core_impl_t::erase_view(wayfire_view v)
     if (!v) return;
 
     if (v->get_output())
-        v->get_output()->workspace->remove_view(v);
+        v->set_output(nullptr);
 
     auto it = std::find_if(views.begin(), views.end(),
         [&v] (const auto& view) { return view.get() == v.get(); });
@@ -484,6 +562,11 @@ void wf::compositor_core_impl_t::run(std::string command)
         int status;
         waitpid(pid, &status, 0);
     }
+}
+
+int wf::compositor_core_impl_t::get_xwayland_display()
+{
+    return xwayland_get_display();
 }
 
 void wf::compositor_core_impl_t::move_view_to_output(wayfire_view v,

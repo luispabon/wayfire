@@ -26,16 +26,6 @@ void wf::wlr_view_t::set_role(view_role_t new_role)
         destroy_toplevel();
 }
 
-void wf::wlr_view_t::damage_surface_box(const wlr_box& box)
-{
-    auto obox = get_output_geometry();
-
-    auto damaged = box;
-    damaged.x += obox.x;
-    damaged.y += obox.y;
-    damage_box(damaged);
-}
-
 void wf::wlr_view_t::handle_app_id_changed(std::string new_app_id)
 {
     this->app_id = new_app_id;
@@ -113,7 +103,7 @@ void wf::wlr_view_t::subtract_opaque(wf::region_t& region, int x, int y)
     if (this->fullscreen)
         maximal_shrink_constraint = 0;
 
-    wf::surface_interface_t::subtract_opaque(region, x, y);
+    wf::view_interface_t::subtract_opaque(region, x, y);
     maximal_shrink_constraint = saved_shrink_constraint;
 }
 
@@ -127,7 +117,7 @@ void wf::wlr_view_t::set_position(int x, int y,
     data.view = self();
     data.old_geometry = old_geometry;
 
-    damage_raw(last_bounding_box);
+    view_damage_raw(self(), last_bounding_box);
     /* obox.x - wm.x is the current difference in the output and wm geometry */
     geometry.x = x + obox.x - wm.x;
     geometry.y = y + obox.y - wm.y;
@@ -181,7 +171,7 @@ void wf::wlr_view_t::update_size()
     }
 
     /* Damage current size */
-    damage_raw(last_bounding_box);
+    view_damage_raw(self(), last_bounding_box);
     adjust_anchored_edge(current_size);
 
     view_geometry_changed_signal data;
@@ -193,7 +183,7 @@ void wf::wlr_view_t::update_size()
 
     /* Damage new size */
     last_bounding_box = get_bounding_box();
-    damage_raw(last_bounding_box);
+    view_damage_raw(self(), last_bounding_box);
     emit_signal("geometry-changed", &data);
 
     if (view_impl->frame)
@@ -226,19 +216,31 @@ bool wf::wlr_view_t::should_be_decorated()
     return role == wf::VIEW_ROLE_TOPLEVEL && !has_client_decoration;
 }
 
+void wf::wlr_view_t::set_decoration_mode(bool use_csd)
+{
+    bool was_decorated = should_be_decorated();
+    this->has_client_decoration = use_csd;
+    if ((was_decorated != should_be_decorated()) && is_mapped())
+    {
+        wf::decoration_state_updated_signal data;
+        data.view = self();
+
+        this->emit_signal("decoration-state-updated", &data);
+        if (get_output())
+            get_output()->emit_signal("decoration-state-updated-view", &data);
+    }
+}
+
 void wf::wlr_view_t::set_output(wf::output_t *wo)
 {
-    _output_signal data;
-    data.output = get_output();
-    toplevel_update_output(get_output(), false);
-
-    surface_interface_t::set_output(wo);
-    if (wo != data.output)
-        emit_signal("set-output", &data);
-
+    auto old_output = get_output();
+    toplevel_update_output(old_output, false);
+    view_interface_t::set_output(wo);
     toplevel_update_output(wo, true);
+
     /* send enter/leave events */
-    update_output(data.output, wo);
+    if (this->is_mapped())
+        update_output(old_output, wo);
 }
 
 void wf::wlr_view_t::commit()
@@ -264,7 +266,7 @@ void wf::wlr_view_t::map(wlr_surface *surface)
 
     update_size();
 
-    if (role == VIEW_ROLE_TOPLEVEL)
+    if (role == VIEW_ROLE_TOPLEVEL && !parent)
     {
         get_output()->workspace->add_view(self(), wf::LAYER_WORKSPACE);
         get_output()->focus_view(self());

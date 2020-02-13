@@ -4,7 +4,7 @@ project(
 	'cpp',
 	version: '0.3.1',
 	license: 'MIT',
-	meson_version: '>=0.43.0',
+	meson_version: '>=0.47.0',
 	default_options: [
 		'cpp_std=c++17',
 		'c_std=c11',
@@ -29,8 +29,18 @@ libinput       = dependency('libinput', version: '>=1.7.0')
 pixman         = dependency('pixman-1')
 threads        = dependency('threads')
 xkbcommon      = dependency('xkbcommon')
-wlroots        = dependency('wlroots', version: ['>=0.9.0', '<0.10.0'], fallback: ['wlroots', 'wlroots'])
-wfconfig       = dependency('wf-config', version: '>=0.3', fallback: ['wf-config', 'wfconfig'])
+wlroots        = dependency('wlroots', version: ['>=0.9.0', '<0.11.0'], required: get_option('use_system_wlroots'))
+wfconfig       = dependency('wf-config', version: ['>=0.3', '<0.4'], required: get_option('use_system_wfconfig'))
+
+use_system_wlroots = not get_option('use_system_wlroots').disabled() and wlroots.found()
+if not use_system_wlroots
+  wlroots = subproject('wlroots').get_variable('wlroots')
+endif
+
+use_system_wfconfig = not get_option('use_system_wfconfig').disabled() and wfconfig.found()
+if not use_system_wfconfig
+  wfconfig = subproject('wf-config').get_variable('wfconfig')
+endif
 
 needs_libinotify = ['freebsd', 'dragonfly'].contains(host_machine.system())
 libinotify       = dependency('libinotify', required: needs_libinotify)
@@ -48,16 +58,13 @@ conf_data.set('INSTALL_PREFIX', get_option('prefix'))
 conf_data.set('PLUGIN_PATH', join_paths(get_option('prefix'), get_option('libdir'), 'wayfire'))
 metadata_dir_suffix = 'share/wayfire/metadata'
 conf_data.set('PLUGIN_XML_DIR', join_paths(get_option('prefix'), metadata_dir_suffix))
-conf_data.set('SYSCONFDIR', join_paths('/', get_option('sysconfdir')))
+sysconfdir = join_paths(get_option('prefix'), get_option('sysconfdir'))
+conf_data.set('SYSCONFDIR', sysconfdir)
 
 # needed to dlopen() plugins
 # -E is for RTTI/dynamic_cast across plugins
 add_project_arguments(['-DWLR_USE_UNSTABLE'], language: ['cpp', 'c'])
 add_project_link_arguments(['-rdynamic', '-Wl,-E'], language: 'cpp')
-
-ccp = meson.get_compiler('cpp')
-wlroots_has_xwayland = ccp.get_define('WLR_HAS_XWAYLAND', prefix: '#include <wlr/config.h>', dependencies: wlroots) == '1'
-wlroots_has_x11_backend = ccp.get_define('WLR_HAS_X11_BACKEND', prefix: '#include <wlr/config.h>', dependencies: wlroots) == '1'
 
 if get_option('buildtype') == 'debug' or get_option('enable_debug_output')
   conf_data.set('WAYFIRE_DEBUG_ENABLED', true)
@@ -97,20 +104,31 @@ subdir('src')
 subdir('metadata')
 subdir('plugins')
 
-install_subdir('shaders', install_dir: 'share/wayfire')
+wlroots_x_info = []
 
-summary = [
+if use_system_wlroots
+  cpp = meson.get_compiler('cpp')
+  wlroots_has_xwayland = cpp.get_define('WLR_HAS_XWAYLAND', prefix: '#include <wlr/config.h>', dependencies: wlroots) == '1'
+  wlroots_has_x11_backend = cpp.get_define('WLR_HAS_X11_BACKEND', prefix: '#include <wlr/config.h>', dependencies: wlroots) == '1'
+  wlroots_x_info += [
+      '       xwayland: @0@'.format(wlroots_has_xwayland),
+      '    x11-backend: @0@'.format(wlroots_has_x11_backend)]
+endif
+
+summary_begin = [
 	'',
 	'----------------',
 	'wayfire @0@'.format(meson.project_version()),
 	'',
-	'debug output: @0@'.format(conf_data.get('WAYFIRE_DEBUG_ENABLED')),
-	'     imageio: @0@'.format(conf_data.get('BUILD_WITH_IMAGEIO')),
-	'      gles32: @0@'.format(conf_data.get('USE_GLES32')),
-	'    xwayland: @0@'.format(wlroots_has_xwayland),
-	' x11-backend: @0@'.format(wlroots_has_x11_backend),
-	'graphics dbg: @0@'.format(conf_data.get('WAYFIRE_GRAPHICS_DEBUG')),
-	'----------------',
-	''
+    'system wfconfig: @0@'.format(use_system_wfconfig),
+    ' system wlroots: @0@'.format(use_system_wlroots)]
+
+summary_end = [
+    '   debug output: @0@'.format(conf_data.get('WAYFIRE_DEBUG_ENABLED')),
+    '        imageio: @0@'.format(conf_data.get('BUILD_WITH_IMAGEIO')),
+    '         gles32: @0@'.format(conf_data.get('USE_GLES32')),
+    '   graphics dbg: @0@'.format(conf_data.get('WAYFIRE_GRAPHICS_DEBUG')),
+    '----------------',
+    ''
 ]
-message('\n'.join(summary))
+message('\n'.join(summary_begin + wlroots_x_info + summary_end))

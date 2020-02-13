@@ -42,11 +42,15 @@ class wayfire_xwayland_view_base : public wf::wlr_view_t
             move(geometry.x, geometry.y);
     }};
 
-    public:
-
+  public:
     wayfire_xwayland_view_base(wlr_xwayland_surface *xww)
         : wlr_view_t(), xw(xww)
     {
+    }
+
+    virtual void initialize() override
+    {
+        wf::wlr_view_t::initialize();
         on_map.set_callback([&] (void*) { map(xw->surface); });
         on_unmap.set_callback([&] (void*) { unmap(); });
         on_destroy.set_callback([&] (void*) { destroy(); });
@@ -141,7 +145,7 @@ class wayfire_xwayland_view_base : public wf::wlr_view_t
 
     void send_configure(int width, int height)
     {
-        if (!xw) // can happen after xsurface is destroyed
+        if (!xw)
             return;
 
         if (width < 0 || height < 0)
@@ -190,8 +194,10 @@ class wayfire_xwayland_view_base : public wf::wlr_view_t
             wo->connect_signal("output-configuration-changed",
                 &output_geometry_changed);
         }
+
         /* Update the real position */
-        send_configure();
+        if (is_mapped())
+            send_configure();
     }
 };
 
@@ -211,14 +217,19 @@ class wayfire_unmanaged_xwayland_view : public wayfire_xwayland_view_base
 class wayfire_xwayland_view : public wayfire_xwayland_view_base
 {
     wf::wl_listener_wrapper on_request_move, on_request_resize,
-        on_request_maximize, on_request_fullscreen, on_set_parent;
+        on_request_maximize, on_request_fullscreen, on_set_parent,
+        on_set_decorations;
 
   public:
     wayfire_xwayland_view(wlr_xwayland_surface *xww)
         : wayfire_xwayland_view_base(xww)
+    { }
+
+    virtual void initialize() override
     {
         LOGE("new xwayland surface ", xw->title,
             " class: ", xw->class_t, " instance: ", xw->instance);
+        wayfire_xwayland_view_base::initialize();
 
         on_request_move.set_callback([&] (void*) { move_request(); });
         on_request_resize.set_callback([&] (void*) { resize_request(); });
@@ -233,10 +244,20 @@ class wayfire_xwayland_view : public wayfire_xwayland_view_base
         on_set_parent.set_callback([&] (void*) {
             auto parent = xw->parent ?
                 wf::wf_view_from_void(xw->parent->data)->self() : nullptr;
-            set_toplevel_parent(parent);
+            /* XXX: Do not set parent if parent is unmapped. This happens on
+             * some Xwayland clients which have a WM leader and dialogues are
+             * then children of this unmapped WM leader... */
+            if (!parent || parent->is_mapped())
+                set_toplevel_parent(parent);
+        });
+
+        on_set_decorations.set_callback([&] (void*) {
+            update_decorated();
         });
 
         on_set_parent.connect(&xw->events.set_parent);
+        on_set_decorations.connect(&xw->events.set_decorations);
+
         on_request_move.connect(&xw->events.request_move);
         on_request_resize.connect(&xw->events.request_resize);
         on_request_maximize.connect(&xw->events.request_maximize);
@@ -245,6 +266,7 @@ class wayfire_xwayland_view : public wayfire_xwayland_view_base
         xw->data = dynamic_cast<wf::view_interface_t*> (this);
         // set initial parent
         on_set_parent.emit(nullptr);
+        on_set_decorations.emit(nullptr);
     }
 
     virtual void destroy() override
@@ -328,11 +350,11 @@ class wayfire_xwayland_view : public wayfire_xwayland_view_base
         last_server_height = geometry.height;
     }
 
-    virtual bool should_be_decorated() override
+    void update_decorated()
     {
-        return !(xw->decorations &
-            (WLR_XWAYLAND_SURFACE_DECORATIONS_NO_TITLE |
-             WLR_XWAYLAND_SURFACE_DECORATIONS_NO_BORDER));
+        uint32_t csd_flags = WLR_XWAYLAND_SURFACE_DECORATIONS_NO_TITLE |
+                WLR_XWAYLAND_SURFACE_DECORATIONS_NO_BORDER;
+        this->set_decoration_mode(xw->decorations & csd_flags);
     }
 
     void set_activated(bool active) override
@@ -494,16 +516,7 @@ void wayfire_unmanaged_xwayland_view::map(wlr_surface *surface)
     wf::wlr_view_t::map(surface);
 
     if (wlr_xwayland_or_surface_wants_focus(xw))
-    {
-        /* Clients that need to interact with the user, just make sure that
-         * they are not below a panel or similar */
-        auto wa = get_output()->workspace->get_workarea();
-        move(xw->x + wa.x - real_output_geometry.x,
-            xw->y + wa.y - real_output_geometry.y);
-
-        /* And focus them, since they are a new window */
         get_output()->focus_view(self());
-    }
 }
 
 static wlr_xwayland *xwayland_handle = nullptr;

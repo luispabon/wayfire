@@ -280,7 +280,6 @@ int main(int argc, char *argv[])
 
     LOGI("running at server ", server_name);
     setenv("WAYLAND_DISPLAY", server_name, 1);
-
     wf::xwayland_set_seat(core.get_current_seat());
     wl_display_run(core.display);
 

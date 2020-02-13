@@ -13,53 +13,57 @@ class wf_blur_transformer : public wf::view_transformer_t
 {
     blur_algorithm_provider provider;
     wf::output_t *output;
-    public:
+  public:
+    wf_blur_transformer(blur_algorithm_provider blur_algorithm_provider,
+        wf::output_t *output)
+    {
+        provider = blur_algorithm_provider;
+        this->output = output;
+    }
 
-        wf_blur_transformer(blur_algorithm_provider blur_algorithm_provider,
-            wf::output_t *output)
-        {
-            provider = blur_algorithm_provider;
-            this->output = output;
-        }
+    wf::pointf_t transform_point(wf::geometry_t view,
+        wf::pointf_t point) override
+    {
+        return point;
+    }
 
-        virtual wf::pointf_t local_to_transformed_point(wf::geometry_t view,
-            wf::pointf_t point)
-        {
-            return point;
-        }
+    wf::pointf_t untransform_point(wf::geometry_t view,
+        wf::pointf_t point) override
+    {
+        return point;
+    }
 
-        virtual wf::pointf_t transformed_to_local_point(wf::geometry_t view,
-            wf::pointf_t point)
-        {
-            return point;
-        }
+    wlr_box get_bounding_box(wf::geometry_t view, wlr_box region) override
+    {
+        return region;
+    }
 
-        virtual wlr_box get_bounding_box(wf::geometry_t view, wlr_box region)
-        {
-            return region;
-        }
+    wf::region_t transform_opaque_region(
+        wf::geometry_t bbox, wf::region_t region) override
+    {
+        return region;
+    }
 
-        uint32_t get_z_order() { return wf::TRANSFORMER_BLUR; }
+    uint32_t get_z_order() override { return wf::TRANSFORMER_BLUR; }
+    void render_with_damage(wf::texture_t src_tex, wlr_box src_box,
+        const wf::region_t& damage, const wf::framebuffer_t& target_fb) override
+    {
+        wlr_box box = src_box;
+        box.x -= target_fb.geometry.x;
+        box.y -= target_fb.geometry.y;
 
-        virtual void render_with_damage(uint32_t src_tex, wlr_box src_box, const wf::region_t& damage,
-            const wf::framebuffer_t& target_fb)
-        {
-            wlr_box box = src_box;
-            box.x -= target_fb.geometry.x;
-            box.y -= target_fb.geometry.y;
+        box = target_fb.damage_box_from_geometry_box(box);
+        wf::region_t clip_damage = damage & box;
 
-            box = target_fb.damage_box_from_geometry_box(box);
-            wf::region_t clip_damage = damage & box;
+        provider()->pre_render(src_tex, src_box, clip_damage, target_fb);
+        wf::view_transformer_t::render_with_damage(src_tex, src_box, clip_damage, target_fb);
+    }
 
-            provider()->pre_render(src_tex, src_box, clip_damage, target_fb);
-            wf::view_transformer_t::render_with_damage(src_tex, src_box, clip_damage, target_fb);
-        }
-
-        virtual void render_box(uint32_t src_tex, wlr_box src_box, wlr_box scissor_box,
-            const wf::framebuffer_t& target_fb)
-        {
-            provider()->render(src_tex, src_box, scissor_box, target_fb);
-        }
+    void render_box(wf::texture_t src_tex, wlr_box src_box, wlr_box scissor_box,
+        const wf::framebuffer_t& target_fb) override
+    {
+        provider()->render(src_tex, src_box, scissor_box, target_fb);
+    }
 };
 
 class wayfire_blur : public wf::plugin_interface_t
@@ -79,7 +83,6 @@ class wayfire_blur : public wf::plugin_interface_t
     std::unique_ptr<wf_blur_base> blur_algorithm;
 
     const std::string transformer_name = "blur";
-    const uint32_t blur_layers = wf::MIDDLE_LAYERS | wf::ABOVE_LAYERS;
 
     /* the pixels from padded_region */
     wf::framebuffer_base_t saved_pixels;
@@ -136,8 +139,11 @@ class wayfire_blur : public wf::plugin_interface_t
 
             if (std::string(mode_opt) == normal_mode)
             {
-                for (auto& view : output->workspace->get_views_in_layer(blur_layers))
+                for (auto& view :
+                    output->workspace->get_views_in_layer(wf::ALL_LAYERS))
+                {
                     add_transformer(view);
+                }
             }
 
             last_mode = mode_opt;
@@ -174,12 +180,15 @@ class wayfire_blur : public wf::plugin_interface_t
         view_attached = [=] (wf::signal_data_t *data)
         {
             auto view = get_signaled_view(data);
-            if (std::string(mode_opt) == normal_mode &&
-                (output->workspace->get_view_layer(view) & blur_layers))
+            /* View was just created -> we don't know its layer yet */
+            if (!view->is_mapped())
+                return;
+
+            if ((std::string)mode_opt == normal_mode &&
+                !(output->workspace->get_view_layer(view) & wf::BELOW_LAYERS))
             {
-                /* we shouldn't have added it already */
-                assert(!view->get_transformer(transformer_name));
-                add_transformer(view);
+                if (!view->get_transformer(transformer_name))
+                    add_transformer(view);
             }
         };
 
@@ -192,6 +201,7 @@ class wayfire_blur : public wf::plugin_interface_t
             pop_transformer(view);
         };
         output->connect_signal("attach-view", &view_attached);
+        output->connect_signal("map-view", &view_attached);
         output->connect_signal("detach-view", &view_detached);
 
         /* frame_pre_paint is called before each frame has started.
@@ -326,6 +336,7 @@ class wayfire_blur : public wf::plugin_interface_t
 
         output->rem_binding(&button_toggle);
         output->disconnect_signal("attach-view", &view_attached);
+        output->disconnect_signal("map-view", &view_attached);
         output->disconnect_signal("detach-view", &view_detached);
         output->render->rem_effect(&frame_pre_paint);
         output->render->disconnect_signal("workspace-stream-pre", &workspace_stream_pre);

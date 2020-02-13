@@ -53,10 +53,12 @@
 	</option>
 	<option name="skydome_texture" type="string">
 		<_short>Skydome Texture</_short>
+		<hint>file</hint>
 		<default></default>
 	</option>
 	<option name="cubemap_image" type="string">
 		<_short>Cubemap Image</_short>
+		<hint>file</hint>
 		<default></default>
 	</option>
 	<option name="light" type="bool">

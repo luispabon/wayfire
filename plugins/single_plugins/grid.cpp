@@ -252,6 +252,8 @@ class wayfire_grid : public wf::plugin_interface_t
             output->add_activator(keys[i], &bindings[i]);
         }
 
+        output->add_activator(restore_opt, &restore);
+
         output->connect_signal("reserved-workarea", &on_workarea_changed);
         output->connect_signal("view-snap", &on_snap_signal);
         output->connect_signal("query-snap-geometry", &on_snap_query);

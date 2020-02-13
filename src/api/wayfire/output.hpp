@@ -70,8 +70,11 @@ class output_t : public wf::object_base_t
 
     /**
      * Moves the pointer so that it is inside the output
+     *
+     * @param center If set to true, the pointer will be centered on the
+     *   output, regardless of whether it was inside before.
      */
-    void ensure_pointer() const;
+    void ensure_pointer(bool center = false) const;
 
     /**
      * Gets the cursor position relative to the output

@@ -31,10 +31,15 @@ class output_t;
  * This is a base class to all "drawables" - desktop views, subsurfaces, popups */
 enum view_role_t
 {
-    VIEW_ROLE_TOPLEVEL, // regular, "WM" views
-    VIEW_ROLE_UNMANAGED, // xwayland override redirect or unmanaged views
-    VIEW_ROLE_SHELL_VIEW, // background, lockscreen, panel, notifications, etc
-    VIEW_ROLE_COMPOSITOR_VIEW, // views created by the compositor for special use
+    /** Regular views which can be moved around. */
+    VIEW_ROLE_TOPLEVEL,
+    /** Views which position is fixed externally, for ex. Xwayland OR views */
+    VIEW_ROLE_UNMANAGED,
+    /**
+     * Views which are part of the desktop environment, for example panels,
+     * background views, etc.
+     */
+    VIEW_ROLE_DESKTOP_ENVIRONMENT,
 };
 
 /**
@@ -57,8 +62,21 @@ class view_interface_t : public surface_interface_t, public wf::object_base_t
      */
     wayfire_view parent = nullptr;
 
-    /** A list of the children views.  */
+    /**
+     * A list of the children views.
+     */
     std::vector<wayfire_view> children;
+
+    /**
+     * Generate a list of all views in the view's tree.
+     * This includes the view itself, its @children and so on.
+     *
+     * @param mapped_only Whether to include only mapped views.
+     *
+     * @return A list of all views in the view's tree. This includes the view
+     *   itself, its @children and so on.
+     */
+    std::vector<wayfire_view> enumerate_views(bool mapped_only = true);
 
     /**
      * Set the toplevel parent of the view, and adjust the children's list of
@@ -343,10 +361,26 @@ class view_interface_t : public surface_interface_t, public wf::object_base_t
     bool intersects_region(const wlr_box& region);
 
     /**
+     * Subtract the transformed opaque region of the view and its subsurfaces.
+     *
+     * @param region The region to subtract opaque from.
+     *   It has the output scale applied to it.
+     * @param x The X offset of the region coordinate system relative to the
+     *   output coordinate system.
+     * @param x The X offset of the region coordinate system relative to the
+     *   output coordinate system.
+     */
+    virtual void subtract_transformed_opaque(
+        wf::region_t& region, int x, int y);
+
+    /**
      * Render all the surfaces of the view using the view's transforms.
      * If the view is unmapped, this operation will try to read from any
      * snapshot created by take_snapshot() or when transformers were applied,
      * and use that buffer.
+     *
+     * Child views like dialogues are considered a part of the view's surface
+     * tree, however they are not transformed by the view's transformers.
      *
      * @param framebuffer the framebuffer to render to.
      * @param damage the damaged region of the view, in the same (but scaled)
@@ -372,26 +406,29 @@ class view_interface_t : public surface_interface_t, public wf::object_base_t
   protected:
     view_interface_t();
 
+    friend class compositor_core_impl_t;
+    /**
+     * View initialization happens in three stages:
+     *
+     * First, memory for the view is allocated and default members are set.
+     * Second, the view is added to core, which assigns the view to an output.
+     * Third, core calls @initialize() on the view. This is where the real view
+     *   initialization should happen.
+     *
+     * Note that generally most of the operations in 3. can be also done in 1.,
+     * except when they require an output.
+     */
+    virtual void initialize() {};
+
     /** get_offset() is not valid for views */
     virtual wf::point_t get_offset() override { return {0, 0}; }
 
-    /**
-     * Damage the given box. It is assumed that the box is already transformed
-     * by the view's transformers.
-     *
-     * The main difference with directly damaging the output is that this will
-     * add the damage to all workspaces the view is visible on, in case of shell
-     * views.
-     */
-    virtual void damage_raw(const wlr_box& box);
+    /** Damage the given box, in surface-local coordinates */
+    virtual void damage_surface_box(const wlr_box& box) override;
 
     /**
-     * Damage the given box after transforming it with the transformers.
-     */
-    virtual void damage_box(const wlr_box& box);
-
-    /**
-     * @return the bounding box of the view before transformers
+     * @return the bounding box of the view before transformers,
+     *  in output-local coordinates
      */
     virtual wf::geometry_t get_untransformed_bounding_box();
 

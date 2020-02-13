@@ -30,12 +30,12 @@ enum layer_t
     LAYER_BOTTOM     = (1 << 1),
     /* The workspace layer is where regular views are placed */
     LAYER_WORKSPACE  = (1 << 2),
-    /* The xwayland layer is used for Xwayland O-R windows */
-    LAYER_XWAYLAND   = (1 << 3),
     /* The top layer. Typical clients here are non-autohiding panels */
-    LAYER_TOP        = (1 << 4),
+    LAYER_TOP        = (1 << 3),
     /* The fullscreen layer, used only for fullscreen views */
-    LAYER_FULLSCREEN = (1 << 5),
+    LAYER_FULLSCREEN = (1 << 4),
+    /* The xwayland layer is used for Xwayland O-R windows */
+    LAYER_XWAYLAND   = (1 << 5),
     /* The lockscreen layer, typically lockscreens or autohiding panels */
     LAYER_LOCK       = (1 << 6),
     /* The layer where "desktop widgets" are positioned, for example an OSK

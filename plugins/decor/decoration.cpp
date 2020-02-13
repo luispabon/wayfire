@@ -8,23 +8,24 @@
 #include "deco-subsurface.hpp"
 class wayfire_decoration : public wf::plugin_interface_t
 {
-    wf::signal_callback_t view_created;
+    wf::signal_connection_t view_updated {
+        [=] (wf::signal_data_t *data)
+        {
+            update_view_decoration(get_signaled_view(data));
+        }};
 
   public:
     void init() override
     {
         grab_interface->name = "simple-decoration";
         grab_interface->capabilities = wf::CAPABILITY_VIEW_DECORATOR;
-        view_created = [=] (wf::signal_data_t *data)
-        {
-            new_view(get_signaled_view(data));
-        };
 
-        output->connect_signal("map-view", &view_created);
+        output->connect_signal("map-view", &view_updated);
+        output->connect_signal("decoration-state-updated-view", &view_updated);
     }
 
     wf::wl_idle_call idle_deactivate;
-    void new_view(wayfire_view view)
+    void update_view_decoration(wayfire_view view)
     {
         if (view->should_be_decorated())
         {
@@ -35,6 +36,9 @@ class wayfire_decoration : public wf::plugin_interface_t
                     output->deactivate_plugin(grab_interface);
                 });
             }
+        } else
+        {
+            view->set_decoration(nullptr);
         }
     }
 
@@ -42,8 +46,6 @@ class wayfire_decoration : public wf::plugin_interface_t
     {
         for (auto& view : output->workspace->get_views_in_layer(wf::ALL_LAYERS))
             view->set_decoration(nullptr);
-
-        output->disconnect_signal("map-view", &view_created);
     }
 };
 

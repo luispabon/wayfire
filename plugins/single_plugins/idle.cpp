@@ -41,6 +41,7 @@ class wayfire_idle
     screensaver_animation_t screensaver_animation{zoom_speed};
 
     wf::option_wrapper_t<int> dpms_timeout{"idle/dpms_timeout"};
+    wf::option_wrapper_t<bool> disable_dpms_on_fullscreen{"idle/disable_dpms_on_fullscreen"};
     wf::option_wrapper_t<int> screensaver_timeout{"idle/screensaver_timeout"};
     wf::option_wrapper_t<double> cube_rotate_speed{"idle/cube_rotate_speed"};
     wf::option_wrapper_t<double> cube_max_zoom{"idle/cube_max_zoom"};
@@ -106,7 +107,18 @@ class wayfire_idle
         timeout_dpms = wlr_idle_timeout_create(wf::get_core().protocols.idle,
             wf::get_core().get_current_seat(), 1000 * timeout_sec);
 
-        on_idle_dpms.set_callback([&] (void*) {
+        on_idle_dpms.set_callback([&] (void*)
+        {
+            if (disable_dpms_on_fullscreen)
+            {
+                for (auto wo : wf::get_core().output_layout->get_outputs())
+                {
+                    auto focus = wo->get_active_view();
+                    if (focus && wo->workspace->get_view_layer(focus) == wf::LAYER_FULLSCREEN)
+                        return;
+                }
+            }
+
             set_state(wf::OUTPUT_IMAGE_SOURCE_SELF, wf::OUTPUT_IMAGE_SOURCE_DPMS);
         });
         on_idle_dpms.connect(&timeout_dpms->events.idle);

@@ -22,8 +22,10 @@ extern "C"
     struct wlr_xdg_output_manager_v1;
     struct wlr_export_dmabuf_manager_v1;
     struct wlr_server_decoration_manager;
+    struct wlr_xdg_decoration_manager_v1;
     struct wlr_input_inhibit_manager;
     struct wlr_virtual_keyboard_manager_v1;
+    struct wlr_virtual_pointer_manager_v1;
     struct wlr_idle;
     struct wlr_idle_inhibit_manager_v1;
     struct wlr_screencopy_manager_v1;
@@ -85,8 +87,10 @@ class compositor_core_t : public wf::object_base_t
         wlr_linux_dmabuf_v1 *linux_dmabuf;
         wlr_export_dmabuf_manager_v1 *export_dmabuf;
         wlr_server_decoration_manager *decorator_manager;
+        wlr_xdg_decoration_manager_v1 *xdg_decorator;
         wlr_xdg_output_manager_v1 *output_manager;
         wlr_virtual_keyboard_manager_v1 *vkbd_manager;
+        wlr_virtual_pointer_manager_v1 *vptr_manager;
         wlr_input_inhibit_manager *input_inhibit;
         wlr_idle *idle;
         wlr_idle_inhibit_manager_v1 *idle_inhibit;
@@ -220,8 +224,13 @@ class compositor_core_t : public wf::object_base_t
 
     /** The wayland socket name of Wayfire */
     std::string wayland_display;
-    /** The xwayland display name */
-    std::string xwayland_display;
+
+    /**
+     * Return the xwayland display number.
+     *
+     * This returns -1 if xwayland is not available
+     */
+    virtual int get_xwayland_display() = 0;
 
     /**
      * Execute the given command in a bash shell.

@@ -27,5 +27,17 @@
 		<_short>Background Color</_short>
 		<default>0.0 0.0 0.0 1.0</default>
 	</option>
+	<option name="preferred_decoration_mode" type="string">
+		<_short>Preferred decoration mode</_short>
+		<default>client</default>
+		<desc>
+			<value>client</value>
+			<_name>Client</_name>
+		</desc>
+		<desc>
+			<value>server</value>
+			<_name>Server</_name>
+		</desc>
+	</option>
 	</plugin>
 </wayfire>

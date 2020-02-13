@@ -582,6 +582,7 @@ namespace wf
         /* Mirroring implementation */
         wl_listener_wrapper on_mirrored_frame;
         wl_listener_wrapper on_frame;
+        wlr_output *locked_cursors_on = NULL;
 
         /** Render the output using texture as source */
         void render_output(wlr_texture *texture)
@@ -669,6 +670,12 @@ namespace wf
                 return;
             }
 
+            /* Force software cursors on the mirrored from output.
+             * This ensures that they will be copied when reading pixels
+             * from the main plane */
+            wlr_output_lock_software_cursors(wo->handle, true);
+            locked_cursors_on = wo->handle;
+
             wlr_output_schedule_frame(handle);
             on_mirrored_frame.set_callback([=] (void*) {
                 /* The mirrored output was repainted, schedule repaint
@@ -683,6 +690,12 @@ namespace wf
 
         void teardown_mirror()
         {
+            if (locked_cursors_on)
+            {
+                wlr_output_lock_software_cursors(locked_cursors_on, false);
+                locked_cursors_on = NULL;
+            }
+
             on_mirrored_frame.disconnect();
             on_frame.disconnect();
         }

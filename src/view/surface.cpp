@@ -1,11 +1,14 @@
 #include <algorithm>
 #include <map>
+#include <wayfire/debug.hpp>
+#include <wayfire/util/log.hpp>
 extern "C"
 {
 #include <wlr/types/wlr_surface.h>
 #define static
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/render/wlr_renderer.h>
+#include <wlr/render/gles2.h>
 #include <wlr/types/wlr_matrix.h>
 #include <wlr/types/wlr_buffer.h>
 #include <wlr/util/region.h>
@@ -151,6 +154,25 @@ bool wf::surface_interface_t::accepts_input(int32_t sx, int32_t sy)
     return wlr_surface_point_accepts_input(priv->wsurface, sx, sy);
 }
 
+void wf::surface_interface_t::impl::scale_opaque_region(
+    wf::region_t& region, int shrink)
+{
+    region *= output->handle->scale;
+    /* region scaling uses std::ceil/std::floor, so the resulting region
+     * encompasses the opaque region. However, in the case of opaque region, we
+     * don't want any pixels that aren't actually opaque. So in case of
+     * different scales, we just shrink by 1 to compensate for the ceil/floor
+     * discrepancy */
+    int ceil_factor = 0;
+    if ((wsurface && output->handle->scale != (float)wsurface->current.scale) ||
+        (!wsurface && output->handle->scale != std::round(output->handle->scale)))
+    {
+        ceil_factor = 1;
+    }
+
+    region.expand_edges(-shrink - ceil_factor);
+}
+
 void wf::surface_interface_t::subtract_opaque(wf::region_t& region, int x, int y)
 {
     if (!priv->wsurface)
@@ -158,18 +180,7 @@ void wf::surface_interface_t::subtract_opaque(wf::region_t& region, int x, int y
 
     wf::region_t opaque{&priv->wsurface->opaque_region};
     opaque += wf::point_t{x, y};
-    opaque *= get_output()->handle->scale;
-
-    /* region scaling uses std::ceil/std::floor, so the resulting region
-     * encompasses the opaque region. However, in the case of opaque region, we
-     * don't want any pixels that aren't actually opaque. So in case of
-     * different scales, we just shrink by 1 to compensate for the ceil/floor
-     * discrepancy */
-    int ceil_factor = 0;
-    if (get_output()->handle->scale != (float)priv->wsurface->current.scale)
-        ceil_factor = 1;
-
-    opaque.expand_edges(-get_active_shrink_constraint() - ceil_factor);
+    priv->scale_opaque_region(opaque, get_active_shrink_constraint());
     region ^= opaque;
 }
 
@@ -179,6 +190,30 @@ wl_client* wf::surface_interface_t::get_client()
         return wl_resource_get_client(priv->wsurface->resource);
 
     return nullptr;
+}
+
+wlr_surface *wf::surface_interface_t::get_wlr_surface()
+{
+    return priv->wsurface;
+}
+
+void wf::surface_interface_t::damage_surface_region(
+    const wf::region_t& dmg)
+{
+    for (const auto& rect : dmg)
+        damage_surface_box(wlr_box_from_pixman_box(rect));
+}
+
+void wf::surface_interface_t::damage_surface_box(const wlr_box& box)
+{
+    /* wlr_view_t overrides damage_surface_box and applies it to the output */
+    if (priv->parent_surface && priv->parent_surface->is_mapped())
+    {
+        wlr_box parent_box = box;
+        parent_box.x += get_offset().x;
+        parent_box.y += get_offset().y;
+        priv->parent_surface->damage_surface_box(parent_box);
+    }
 }
 
 wf::wlr_surface_base_t::wlr_surface_base_t(surface_interface_t *self)
@@ -271,7 +306,7 @@ void wf::wlr_surface_base_t::unmap()
 {
     assert(this->surface);
     apply_surface_damage();
-    damage_surface_box({.x = 0, .y = 0,
+    _as_si->damage_surface_box({.x = 0, .y = 0,
         .width = _get_size().width, .height = _get_size().height});
 
     this->surface->data = NULL;
@@ -292,28 +327,6 @@ wlr_buffer* wf::wlr_surface_base_t::get_buffer()
     return nullptr;
 }
 
-void wf::wlr_surface_base_t::damage_surface_region(
-    const wf::region_t& dmg)
-{
-    for (const auto& rect : dmg)
-        damage_surface_box(wlr_box_from_pixman_box(rect));
-}
-
-void wf::wlr_surface_base_t::damage_surface_box(const wlr_box& box)
-{
-    auto parent =
-        dynamic_cast<wlr_surface_base_t*> (_as_si->priv->parent_surface);
-
-    /* wlr_view_t overrides damage_surface_box and applies it to the output */
-    if (parent && parent->_is_mapped())
-    {
-        wlr_box parent_box = box;
-        parent_box.x += _as_si->get_offset().x;
-        parent_box.y += _as_si->get_offset().y;
-        parent->damage_surface_box(parent_box);
-    }
-}
-
 void wf::wlr_surface_base_t::apply_surface_damage()
 {
     if (!_as_si->get_output() || !_is_mapped())
@@ -326,7 +339,7 @@ void wf::wlr_surface_base_t::apply_surface_damage()
         surface->current.scale != _as_si->get_output()->handle->scale)
         dmg.expand_edges(1);
 
-    damage_surface_region(dmg);
+    _as_si->damage_surface_region(dmg);
 }
 
 void wf::wlr_surface_base_t::commit()
@@ -351,48 +364,29 @@ void wf::wlr_surface_base_t::update_output(wf::output_t *old_output,
         wlr_surface_send_enter(surface, new_output->handle);
 }
 
-void wf::wlr_surface_base_t::_wlr_render_box(
-    const wf::framebuffer_t& fb, int x, int y, const wlr_box& scissor)
+void wf::wlr_surface_base_t::_simple_render(const wf::framebuffer_t& fb,
+    int x, int y, const wf::region_t& damage)
 {
     if (!get_buffer())
         return;
 
-    wlr_box geometry {x, y, surface->current.width, surface->current.height};
-    geometry = fb.damage_box_from_geometry_box(geometry);
-
-    float projection[9];
-    wlr_matrix_projection(projection, fb.viewport_width, fb.viewport_height,
-        (wl_output_transform)fb.wl_transform);
-
-    float matrix[9];
-    wlr_matrix_project_box(matrix, &geometry,
-        wlr_output_transform_invert(surface->current.transform), 0, projection);
+    float rx = x + fb.geometry.x;
+    float ry = y + fb.geometry.y;
+    gl_geometry geometry {
+        rx, ry,
+        rx + surface->current.width, ry + surface->current.height,
+    };
+    wf::texture_t texture{surface->buffer->texture};
+    auto matrix = fb.get_orthographic_projection();
 
     OpenGL::render_begin(fb);
-    auto sbox = scissor; wlr_renderer_scissor(wf::get_core().renderer, &sbox);
-    wlr_render_texture_with_matrix(wf::get_core().renderer,
-        get_buffer()->texture, matrix, 1.0);
-
-#ifdef WAYFIRE_GRAPHICS_DEBUG
-    float scissor_proj[9];
-    wlr_matrix_projection(scissor_proj, fb.viewport_width, fb.viewport_height,
-        WL_OUTPUT_TRANSFORM_NORMAL);
-
-    float col[4] = {0, 0.2, 0, 0.5};
-    wlr_render_rect(wf::get_core().renderer, &scissor, col, scissor_proj);
-#endif
-
-    OpenGL::render_end();
-}
-
-void wf::wlr_surface_base_t::_simple_render(const wf::framebuffer_t& fb,
-    int x, int y, const wf::region_t& damage)
-{
     for (const auto& rect : damage)
     {
         auto box = wlr_box_from_pixman_box(rect);
-        _wlr_render_box(fb, x, y, fb.framebuffer_box_from_damage_box(box));
+        fb.scissor(fb.framebuffer_box_from_damage_box(box));
+        OpenGL::render_transformed_texture(texture, geometry, {}, matrix);
     }
+    OpenGL::render_end();
 }
 
 wf::wlr_child_surface_base_t::wlr_child_surface_base_t(

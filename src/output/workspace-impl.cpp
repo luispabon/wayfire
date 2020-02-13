@@ -171,13 +171,13 @@ class output_viewport_manager_t
     bool view_visible_on(wayfire_view view, wf::point_t vp, bool use_bbox)
     {
         auto g = output->get_relative_geometry();
-        if (view->role != VIEW_ROLE_SHELL_VIEW)
+        if (view->role != VIEW_ROLE_DESKTOP_ENVIRONMENT)
         {
             g.x += (vp.x - current_vx) * g.width;
             g.y += (vp.y - current_vy) * g.height;
         }
 
-        if (view->has_transformer() & use_bbox) {
+        if (view->has_transformer() && use_bbox) {
             return view->intersects_region(g);
         } else {
             return g & view->get_wm_geometry();
@@ -230,8 +230,8 @@ class output_viewport_manager_t
         auto it = std::remove_if(views.begin(), views.end(), [&] (wayfire_view view) {
             return !view_visible_on(view, vp, !wm_only);
         });
-        views.erase(it, views.end());
 
+        views.erase(it, views.end());
         return views;
     }
 
@@ -293,14 +293,13 @@ class output_viewport_manager_t
             MIDDLE_LAYERS, true);
 
         for (auto& view : wf::reverse(views))
-        {
-            if (view->is_mapped())
-                output->workspace->bring_to_front(view);
-        }
+            output->workspace->bring_to_front(view);
 
         /* Focus last window */
-        if (!views.empty())
-            output->focus_view(views.front());
+        auto it = std::find_if(views.begin(), views.end(),
+            [] (wayfire_view view) { return view->is_mapped(); });
+        if (it != views.end())
+            output->focus_view(*it);
     }
 };
 
@@ -539,9 +538,9 @@ class workspace_manager::impl
 
         if (view_layer_before == 0)
         {
-            _view_signal data;
+            attach_view_signal data;
             data.view = view;
-            output->emit_signal("attach-view", &data);
+            output->emit_signal("layer-attach-view", &data);
         }
 
         check_autohide_panels();
@@ -628,9 +627,9 @@ class workspace_manager::impl
         uint32_t view_layer = layer_manager.get_view_layer(view);
         layer_manager.remove_view(view);
 
-        _view_signal data;
+        detach_view_signal data;
         data.view = view;
-        output->emit_signal("detach-view", &data);
+        output->emit_signal("layer-detach-view", &data);
 
         /* Check if the next focused view is fullscreen. If so, then we need
          * to make sure it is in the fullscreen layer */

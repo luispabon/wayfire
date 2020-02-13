@@ -9,6 +9,7 @@
 #include "wayfire/compositor-view.hpp"
 #include "wayfire-shell.hpp"
 #include "../core/seat/input-manager.hpp"
+#include "../view/xdg-shell.hpp"
 #include <wayfire/util/log.hpp>
 
 #include <linux/input.h>
@@ -59,7 +60,7 @@ void wf::output_impl_t::refocus(wayfire_view skip_view, uint32_t layers)
         }
     }
 
-    focus_view(next_focus, false);
+    focus_view(next_focus, 0u);
 }
 
 void wf::output_t::refocus(wayfire_view skip_view)
@@ -121,27 +122,22 @@ wf::geometry_t wf::output_t::get_layout_geometry() const
     }
 }
 
-/* TODO: is this still relevant? */
-void wf::output_t::ensure_pointer() const
+void wf::output_t::ensure_pointer(bool center) const
 {
-    /*
-    auto ptr = weston_seat_get_pointer(wf::get_core().get_current_seat());
-    if (!ptr) return;
+    auto ptr = wf::get_core().get_cursor_position();
+    if (!center &&
+        (get_layout_geometry() & wf::point_t{(int)ptr.x, (int)ptr.y}))
+    {
+        return;
+    }
 
-    int px = wl_fixed_to_int(ptr->x), py = wl_fixed_to_int(ptr->y);
-
-    auto g = get_layout_geometry();
-    if (!point_inside({px, py}, g)) {
-        wl_fixed_t cx = wl_fixed_from_int(g.x + g.width / 2);
-        wl_fixed_t cy = wl_fixed_from_int(g.y + g.height / 2);
-
-        weston_pointer_motion_event ev;
-        ev.mask |= WESTON_POINTER_MOTION_ABS;
-        ev.x = wl_fixed_to_double(cx);
-        ev.y = wl_fixed_to_double(cy);
-
-        weston_pointer_move(ptr, &ev);
-    } */
+    auto lg = get_layout_geometry();
+    wf::point_t target = {
+        lg.x + lg.width / 2,
+        lg.y + lg.height / 2,
+    };
+    wf::get_core().warp_cursor(target.x, target.y);
+    wf::get_core().set_cursor("default");
 }
 
 wf::pointf_t wf::output_t::get_cursor_position() const
@@ -185,14 +181,43 @@ bool wf::output_t::ensure_visible(wayfire_view v)
     return true;
 }
 
-void wf::output_impl_t::update_active_view(wayfire_view v)
+template<class popup_type>
+void try_close_popup(wayfire_view to_check, wayfire_view active_view)
+{
+    auto popup = dynamic_cast<wayfire_xdg_popup<popup_type>*> (to_check.get());
+    if (!popup || popup->popup_parent == active_view.get())
+        return;
+
+    /* Ignore popups which have a popup as their parent. In those cases, we'll
+     * close the topmost popup and this will recursively destroy the others.
+     *
+     * Otherwise we get a race condition with wlroots. */
+    if (dynamic_cast<wayfire_xdg_popup<popup_type>*> (popup->popup_parent))
+        return;
+
+    popup->close();
+}
+
+void wf::output_impl_t::close_popups()
+{
+    for (auto& v : workspace->get_views_in_layer(wf::ALL_LAYERS))
+    {
+        try_close_popup<wlr_xdg_popup> (v, active_view);
+        try_close_popup<wlr_xdg_popup_v6> (v, active_view);
+    }
+}
+
+void wf::output_impl_t::update_active_view(wayfire_view v, uint32_t flags)
 {
     this->active_view = v;
     if (this == wf::get_core().get_active_output())
         wf::get_core().set_active_view(v);
+
+    if (flags & FOCUS_VIEW_CLOSE_POPUPS)
+        close_popups();
 }
 
-void wf::output_impl_t::focus_view(wayfire_view v, bool raise)
+void wf::output_impl_t::focus_view(wayfire_view v, uint32_t flags)
 {
     if (v && workspace->get_view_layer(v) < wf::get_core().get_focused_layer())
     {
@@ -207,9 +232,12 @@ void wf::output_impl_t::focus_view(wayfire_view v, bool raise)
 
     if (!v || !v->is_mapped())
     {
-        update_active_view(nullptr);
+        update_active_view(nullptr, flags);
         return;
     }
+
+    while (v->parent && v->parent->is_mapped())
+        v = v->parent;
 
     /* If no keyboard focus surface is set, then we don't want to focus the view */
     if (v->get_keyboard_focus_surface() || interactive_view_from_view(v.get()))
@@ -219,14 +247,23 @@ void wf::output_impl_t::focus_view(wayfire_view v, bool raise)
         if (v->minimized)
             v->minimize_request(false);
 
-        update_active_view(v);
-        if (raise)
+        update_active_view(v, flags);
+        if (flags & FOCUS_VIEW_RAISE)
             workspace->bring_to_front(v);
 
         focus_view_signal data;
         data.view = v;
         emit_signal("focus-view", &data);
     }
+
+}
+
+void wf::output_impl_t::focus_view(wayfire_view v, bool raise)
+{
+    uint32_t flags = FOCUS_VIEW_CLOSE_POPUPS;
+    if (raise)
+        flags |= FOCUS_VIEW_RAISE;
+    focus_view(v, flags);
 }
 
 wayfire_view wf::output_t::get_top_view() const
