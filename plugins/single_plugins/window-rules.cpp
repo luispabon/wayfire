@@ -6,6 +6,8 @@
 #include <wayfire/signal-definitions.hpp>
 #include <assert.h>
 #include <map>
+#include <cfloat>
+#include "wayfire/view-transform.hpp"
 
 using std::string;
 
@@ -13,7 +15,7 @@ using std::string;
 rules syntax:
 
 title (T) / title contains (T) / app-id (T) / app-id contains (T) (created/destroyed/maximized/fullscreened) ->
-    move X Y | resize W H | (un)set fullscreen | (un)set maximized
+    move X Y | resize W H | (un)set fullscreen | (un)set maximized | set alpha A
 
 where (T) is a text surrounded by parenthesis, for ex. (tilix)
 contains (T) means that (T) can be found anywhere in the title/app-id string
@@ -198,9 +200,7 @@ class wayfire_window_rules : public wf::plugin_interface_t
                     starts_with(action, "set") ? wf::TILED_EDGES_ALL : 0;
                 view->tile_request(edges);
             };
-        }
-
-        else if (ends_with(action, "set fullscreen"))
+        } else if (ends_with(action, "set fullscreen"))
         {
             exec.action = [action] (wayfire_view view)
             {
@@ -208,6 +208,28 @@ class wayfire_window_rules : public wf::plugin_interface_t
                 data.view = view;
                 data.state = starts_with(action, "set");
                 view->get_output()->emit_signal("view-fullscreen-request", &data);
+            };
+        } else if (starts_with(action, "set alpha"))
+        {
+            float a;
+            int t = std::sscanf(action.c_str(), "set alpha %f", &a);
+            if (t != 1)
+                return result;
+            a = std::max(std::min(1.0f, a), 0.1f); /* clamp a in range [0.1f, 1.0f] */
+
+            exec.action = [a] (wayfire_view view)
+            {
+                wf::view_2D *transformer;
+
+                if (!view->get_transformer("alpha"))
+                    view->add_transformer(std::make_unique<wf::view_2D> (view), "alpha");
+
+                transformer = dynamic_cast<wf::view_2D *> (view->get_transformer("alpha").get());
+                if (fabs(transformer->alpha - a) > FLT_EPSILON)
+                {
+                    transformer->alpha = a;
+                    view->damage();
+                }
             };
         }
 

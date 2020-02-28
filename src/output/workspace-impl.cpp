@@ -484,13 +484,13 @@ class workspace_manager::impl
         if (fs_views.size() && !sent_autohide)
         {
             sent_autohide = 1;
-            output->emit_signal("autohide-panels", reinterpret_cast<signal_data_t*> (1));
+            output->emit_signal("fullscreen-layer-focused", reinterpret_cast<signal_data_t*> (1));
             LOGD("autohide panels");
         }
         else if (fs_views.empty() && sent_autohide)
         {
             sent_autohide = 0;
-            output->emit_signal("autohide-panels", reinterpret_cast<signal_data_t*> (0));
+            output->emit_signal("fullscreen-layer-focused", reinterpret_cast<signal_data_t*> (0));
             LOGD("restore panels");
         }
     }

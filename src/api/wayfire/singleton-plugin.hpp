@@ -46,7 +46,7 @@ class singleton_plugin_t : public plugin_interface_t
             wf::get_core().erase_data<CustomDataT>();
     }
 
-    bool is_unloadable() { return unloadable; }
+    bool is_unloadable() override { return unloadable; }
 
   protected:
     /* Get the enclosed plugin */

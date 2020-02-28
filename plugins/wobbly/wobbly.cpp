@@ -504,8 +504,6 @@ class wf_wobbly : public wf::view_transformer_t
             wf::OUTPUT_EFFECT_PRE);
     };
 
-    const wf::plugin_grab_interface_uptr& iface;
-
     std::unique_ptr<wobbly_surface> model;
     std::unique_ptr<wf::iwobbly_state_t> state;
     uint32_t last_frame;
@@ -532,8 +530,7 @@ class wf_wobbly : public wf::view_transformer_t
     }
 
   public:
-    wf_wobbly(wayfire_view view, const wf::plugin_grab_interface_uptr& _iface)
-        : iface(_iface)
+    wf_wobbly(wayfire_view view)
     {
         this->view = view;
         init_model();
@@ -772,7 +769,7 @@ class wayfire_wobbly : public wf::plugin_interface_t
                 && data->view->get_transformer("wobbly") == nullptr)
             {
                 data->view->add_transformer(
-                    std::make_unique<wf_wobbly> (data->view, grab_interface),
+                    std::make_unique<wf_wobbly> (data->view),
                     "wobbly");
             }
 

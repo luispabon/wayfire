@@ -9,10 +9,12 @@ extern "C"
 #include "wayfire/core.hpp"
 #include "wayfire/output-layout.hpp"
 #include "wayfire/workspace-manager.hpp"
+#include "wayfire/signal-definitions.hpp"
 #include "../cube/cube-control-signal.hpp"
 
 #include <cmath>
 #include <wayfire/util/duration.hpp>
+#include <wayfire/util/log.hpp>
 
 #define ZOOM_BASE 1.0
 
@@ -41,15 +43,18 @@ class wayfire_idle
     screensaver_animation_t screensaver_animation{zoom_speed};
 
     wf::option_wrapper_t<int> dpms_timeout{"idle/dpms_timeout"};
-    wf::option_wrapper_t<bool> disable_dpms_on_fullscreen{"idle/disable_dpms_on_fullscreen"};
     wf::option_wrapper_t<int> screensaver_timeout{"idle/screensaver_timeout"};
     wf::option_wrapper_t<double> cube_rotate_speed{"idle/cube_rotate_speed"};
     wf::option_wrapper_t<double> cube_max_zoom{"idle/cube_max_zoom"};
+    wf::option_wrapper_t<bool> disable_on_fullscreen{"idle/disable_on_fullscreen"};
+
+    wf::config::option_base_t::updated_callback_t disable_on_fullscreen_changed;
 
     screensaver_state state = SCREENSAVER_DISABLED;
     std::map<wf::output_t*, bool> screensaver_hook_set;
     bool outputs_inhibited = false;
     bool idle_enabled = true;
+    int idle_inhibit_ref = 0;
     uint32_t last_time;
 
     wlr_idle_timeout *timeout_screensaver = NULL;
@@ -69,6 +74,17 @@ class wayfire_idle
             create_screensaver_timeout(screensaver_timeout);
         });
         create_screensaver_timeout(screensaver_timeout);
+
+        disable_on_fullscreen_changed = [=] ()
+        {
+            if (!disable_on_fullscreen && !idle_enabled)
+            {
+                idle_enabled = true;
+                wlr_idle_set_enabled(wf::get_core().protocols.idle, NULL, true);
+            }
+        };
+
+        disable_on_fullscreen.set_callback(disable_on_fullscreen_changed);
     }
 
     void destroy_dpms_timeout()
@@ -109,16 +125,6 @@ class wayfire_idle
 
         on_idle_dpms.set_callback([&] (void*)
         {
-            if (disable_dpms_on_fullscreen)
-            {
-                for (auto wo : wf::get_core().output_layout->get_outputs())
-                {
-                    auto focus = wo->get_active_view();
-                    if (focus && wo->workspace->get_view_layer(focus) == wf::LAYER_FULLSCREEN)
-                        return;
-                }
-            }
-
             set_state(wf::OUTPUT_IMAGE_SOURCE_SELF, wf::OUTPUT_IMAGE_SOURCE_DPMS);
         });
         on_idle_dpms.connect(&timeout_dpms->events.idle);
@@ -258,11 +264,6 @@ class wayfire_idle
 
         for (auto& output : wf::get_core().output_layout->get_outputs())
         {
-            for (auto& view : output->workspace->get_views_in_layer(wf::ALL_LAYERS))
-            {
-                if (view->fullscreen)
-                    return;
-            }
             output->emit_signal("cube-control", &data);
             if (data.carried_out)
             {
@@ -343,6 +344,36 @@ class wayfire_idle
         wf::get_core().output_layout->apply_configuration(config);
     }
 
+    void idle_enable()
+    {
+        idle_inhibit_ref--;
+
+        if (idle_inhibit_ref < 0)
+        {
+            LOGE("idle_inhibit_ref < 0: ", idle_inhibit_ref);
+        }
+
+        if (idle_inhibit_ref == 0 && !idle_enabled)
+        {
+            toggle_idle();
+        }
+    }
+
+    void idle_inhibit()
+    {
+        idle_inhibit_ref++;
+
+        if (!disable_on_fullscreen)
+        {
+            return;
+        }
+
+        if (idle_inhibit_ref == 1 && idle_enabled)
+        {
+            toggle_idle();
+        }
+    }
+
     void toggle_idle()
     {
         idle_enabled ^= 1;
@@ -361,6 +392,13 @@ class wayfire_idle_singleton : public wf::singleton_plugin_t<wayfire_idle>
         return true;
     };
 
+    wf::signal_connection_t fullscreen_state_changed{[this] (wf::signal_data_t *data)
+    {
+        bool state = data ? true : false;
+
+        state ? get_instance().idle_inhibit() : get_instance().idle_enable();
+    }};
+
     void init() override
     {
         singleton_plugin_t::init();
@@ -370,6 +408,12 @@ class wayfire_idle_singleton : public wf::singleton_plugin_t<wayfire_idle>
         output->add_activator(
             wf::option_wrapper_t<wf::activatorbinding_t>{"idle/toggle"},
             &toggle);
+        output->connect_signal("fullscreen-layer-focused", &fullscreen_state_changed);
+
+        for (auto& view : output->workspace->get_views_in_layer(wf::LAYER_FULLSCREEN))
+        {
+            get_instance().idle_inhibit();
+        }
     }
 
     void fini() override

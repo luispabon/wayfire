@@ -153,8 +153,6 @@ class decoration_layout_t
 
     std::function<void(wlr_box)> damage_callback;
 
-    int total_width = 0;
-    int total_height = 0;
     std::vector<std::unique_ptr<decoration_area_t>> layout_areas;
 
     bool is_grabbed = false;

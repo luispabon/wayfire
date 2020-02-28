@@ -891,6 +891,7 @@ namespace wf
              * output has already been removed but we are yet to add the noop one */
             noop_output->apply_state(noop_output->load_state_from_config());
             wlr_output_layout_add_auto(output_layout, noop_output->handle);
+            timer_remove_noop.disconnect();
         }
 
         void remove_noop_output()

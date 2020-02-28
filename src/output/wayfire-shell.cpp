@@ -189,7 +189,7 @@ class wfs_output : public noncopyable_t
     {
         wf::get_core().output_layout->disconnect_signal("output-removed",
             &on_output_removed);
-        output->disconnect_signal("autohide-panels", &on_autohide_panels);
+        output->disconnect_signal("fullscreen-layer-focused", &on_fullscreen_layer_focused);
         this->output = nullptr;
     }
 
@@ -200,7 +200,7 @@ class wfs_output : public noncopyable_t
             disconnect_from_output();
        };
 
-    wf::signal_callback_t on_autohide_panels = [=] (wf::signal_data_t *data)
+    wf::signal_callback_t on_fullscreen_layer_focused = [=] (wf::signal_data_t *data)
     {
         if (data != nullptr) {
             zwf_output_v2_send_enter_fullscreen(resource);
@@ -218,7 +218,7 @@ class wfs_output : public noncopyable_t
         wl_resource_set_implementation(resource, &zwf_output_impl,
             this, handle_output_destroy);
 
-        output->connect_signal("autohide-panels", &on_autohide_panels);
+        output->connect_signal("fullscreen-layer-focused", &on_fullscreen_layer_focused);
         wf::get_core().output_layout->connect_signal("output-removed",
             &on_output_removed);
     }
