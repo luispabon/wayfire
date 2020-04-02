@@ -2,8 +2,11 @@
 
 [Wayfire]: https://wayfire.org
 
-![Version](https://img.shields.io/badge/version-alpha-important)
-[![IRC](https://img.shields.io/badge/irc-%23wayfire-informational)](https://webchat.freenode.net/#wayfire)
+![Version](https://img.shields.io/github/v/release/WayfireWM/wayfire)
+[![IRC: #wayfire on freenode](https://img.shields.io/badge/irc-%23wayfire-informational)](https://webchat.freenode.net/#wayfire)
+[![CI](https://github.com/WayfireWM/wayfire/workflows/CI/badge.svg)](https://github.com/WayfireWM/wayfire/actions)
+[![Packaging status](https://repology.org/badge/tiny-repos/wayfire.svg)](https://repology.org/project/wayfire/versions)
+[![License](https://img.shields.io/github/license/WayfireWM/wayfire)](LICENSE)
 
 ###### [Get started] | [Manual] | [Configuration]
 
@@ -39,9 +42,14 @@ It aims to create a customizable, extendable and lightweight environment without
 - [Wayland](https://wayland.freedesktop.org)
 - [wayland-protocols](https://gitlab.freedesktop.org/wayland/wayland-protocols)
 - [wf-config](https://github.com/WayfireWM/wf-config)
+- [wf-shell](https://github.com/WayfireWM/wf-shell) (optional)
 - [wlroots](https://github.com/swaywm/wlroots)
 
 ## Installation
+
+The easiest way to install Wayfire, wf-shell and WCM to get a functional desktop is to use the [install scripts](https://github.com/WayfireWM/wf-install).
+
+Alternatively, you can build from source:
 
 ``` sh
 meson build
@@ -82,6 +90,10 @@ dnf install wayfire
 ``` sh
 pkg install wayfire
 ```
+
+###### Gentoo
+Available from either of the two overlays [Guru](https://wiki.gentoo.org/wiki/Project:GURU) or [wayfire-desktop](https://github.com/epsilon-0/wayfire-desktop).  
+Look at [wayfire-desktop](https://github.com/epsilon-0/wayfire-desktop) to get full list of options and available wayfire packages.  
 
 ###### NixOS
 

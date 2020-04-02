@@ -22,17 +22,13 @@
 		<option name="toggle" type="button">
 			<_short>Toggle</_short>
 			<_long>Sets the shortcut to toggle blurring for a specific window.</_long>
-			<default>&lt;super&gt; &lt;alt&gt; BTN_LEFT</default>
+			<default>none</default>
 		</option>
 		<!-- Methods -->
 		<option name="method" type="string">
 			<_short>Method</_short>
 			<_long>Chooses a blur algorithm.</_long>
 			<default>kawase</default>
-			<desc>
-				<value>bokeh</value>
-				<_name>Bokeh</_name>
-			</desc>
 			<desc>
 				<value>box</value>
 				<_name>Box</_name>
@@ -45,31 +41,13 @@
 				<value>kawase</value>
 				<_name>Kawase</_name>
 			</desc>
-		</option>
-		<!-- Bokeh -->
-		<option name="bokeh_offset" type="int">
-			<_short>Bokeh offset</_short>
-			<_long>Sets the offset value for the bokeh method.</_long>
-			<default>5</default>
-			<min>0</min>
-			<max>50</max>
-		</option>
-		<option name="bokeh_degrade" type="int">
-			<_short>Bokeh degrade</_short>
-			<_long>Sets the degrade value for the bokeh method.</_long>
-			<default>1</default>
-			<min>1</min>
-			<max>5</max>
-		</option>
-		<option name="bokeh_iterations" type="int">
-			<_short>Bokeh iterations</_short>
-			<_long>Sets the iterations for the bokeh method.</_long>
-			<default>15</default>
-			<min>0</min>
-			<max>250</max>
+			<desc>
+				<value>bokeh</value>
+				<_name>Bokeh</_name>
+			</desc>
 		</option>
 		<!-- Box -->
-		<option name="box_offset" type="int">
+		<option name="box_offset" type="double">
 			<_short>Box offset</_short>
 			<_long>Sets the offset value for the box method.</_long>
 			<default>2</default>
@@ -91,7 +69,7 @@
 			<max>25</max>
 		</option>
 		<!-- Gaussian -->
-		<option name="gaussian_offset" type="int">
+		<option name="gaussian_offset" type="double">
 			<_short>Gaussian offset</_short>
 			<_long>Sets the offset value for the gaussian method.</_long>
 			<default>2</default>
@@ -113,7 +91,7 @@
 			<max>25</max>
 		</option>
 		<!-- Kawase -->
-		<option name="kawase_offset" type="int">
+		<option name="kawase_offset" type="double">
 			<_short>Kawase offset</_short>
 			<_long>Sets the offset value for the kawase method.</_long>
 			<default>5</default>
@@ -133,6 +111,28 @@
 			<default>2</default>
 			<min>0</min>
 			<max>10</max>
+		</option>
+		<!-- Bokeh -->
+		<option name="bokeh_offset" type="double">
+			<_short>Bokeh offset</_short>
+			<_long>Sets the offset value for the bokeh method.</_long>
+			<default>5</default>
+			<min>0</min>
+			<max>50</max>
+		</option>
+		<option name="bokeh_degrade" type="int">
+			<_short>Bokeh degrade</_short>
+			<_long>Sets the degrade value for the bokeh method.</_long>
+			<default>1</default>
+			<min>1</min>
+			<max>5</max>
+		</option>
+		<option name="bokeh_iterations" type="int">
+			<_short>Bokeh iterations</_short>
+			<_long>Sets the iterations for the bokeh method.</_long>
+			<default>15</default>
+			<min>0</min>
+			<max>250</max>
 		</option>
 	</plugin>
 </wayfire>

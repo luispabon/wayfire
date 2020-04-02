@@ -7,29 +7,7 @@
 		<option name="plugins" type="string">
 			<_short>Plugins</_short>
 			<_long>Loads the specified plugins, space-separated list.</_long>
-			<default>
-				alpha
-				animate
-				autostart
-				command
-				decoration
-				expo
-				fast-switcher
-				fisheye
-				grid
-				idle
-				invert
-				move
-				oswitch
-				place
-				resize
-				switcher
-				vswitch
-				window-rules
-				wobbly
-				wrot
-				zoom
-			</default>
+			<default>alpha animate autostart command cube decoration expo fast-switcher fisheye grid idle invert move oswitch place resize switcher vswitch window-rules wobbly wrot zoom</default>
 		</option>
 		<option name="close_top_view" type="activator">
 			<_short>Close view</_short>
@@ -50,7 +28,7 @@
 		<option name="background_color" type="color">
 			<_short>Background color</_short>
 			<_long>Sets the background color of workspaces.  Visible when nothing is drawing the background.</_long>
-			<default>0.0 0.0 0.0 1.0</default>
+			<default>0.1 0.1 0.1 1.0</default>
 		</option>
 		<option name="preferred_decoration_mode" type="string">
 			<_short>Preferred decoration mode</_short>
@@ -69,6 +47,11 @@
 			<_short>XWayland</_short>
 			<_long>Enables or disables XWayland support, which allows X11 applications to be used.</_long>
 			<default>true</default>
+		</option>
+		<option name="max_render_time" type="int">
+			<_short>Maximum render time</_short>
+			<_long>Sets the compositor render delay in milliseconds, which allows applications to render with low latency.</_long>
+			<default>7</default>
 		</option>
 	</plugin>
 </wayfire>

@@ -31,10 +31,11 @@ struct workspace_stream_t
 /** Emitted whenever a workspace stream is being started or stopped */
 struct stream_signal_t : public wf::signal_data_t
 {
-    stream_signal_t(wf::region_t& damage, const wf::framebuffer_t& _fb)
-        : raw_damage(damage), fb(_fb) { }
+    stream_signal_t(wf::point_t _ws, wf::region_t& damage, const wf::framebuffer_t& _fb)
+        : ws(_ws), raw_damage(damage), fb(_fb) { }
 
     /* Raw damage, can be adjusted by the signal handlers. */
+    wf::point_t ws;
     wf::region_t& raw_damage;
     const wf::framebuffer_t& fb;
 };

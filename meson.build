@@ -2,7 +2,7 @@ project(
 	'wayfire',
 	'c',
 	'cpp',
-	version: '0.3.1',
+	version: '0.4.0',
 	license: 'MIT',
 	meson_version: '>=0.47.0',
 	default_options: [
@@ -13,7 +13,7 @@ project(
 	],
 )
 
-so_version = ['0', '3', '1']
+so_version = ['0', '4', '0']
 wayfire_api_inc  = include_directories('src/api')
 
 wayland_server = dependency('wayland-server')
@@ -30,11 +30,11 @@ pixman         = dependency('pixman-1')
 threads        = dependency('threads')
 xkbcommon      = dependency('xkbcommon')
 wlroots        = dependency('wlroots', version: ['>=0.9.0', '<0.11.0'], required: get_option('use_system_wlroots'))
-wfconfig       = dependency('wf-config', version: ['>=0.3', '<0.4'], required: get_option('use_system_wfconfig'))
+wfconfig       = dependency('wf-config', version: ['>=0.4.0', '<0.5.0'], required: get_option('use_system_wfconfig'))
 
 use_system_wlroots = not get_option('use_system_wlroots').disabled() and wlroots.found()
 if not use_system_wlroots
-  wlroots = subproject('wlroots').get_variable('wlroots')
+  wlroots = subproject('wlroots', default_options : ['examples=false']).get_variable('wlroots')
 endif
 
 use_system_wfconfig = not get_option('use_system_wfconfig').disabled() and wfconfig.found()
@@ -65,18 +65,6 @@ conf_data.set('SYSCONFDIR', sysconfdir)
 # -E is for RTTI/dynamic_cast across plugins
 add_project_arguments(['-DWLR_USE_UNSTABLE'], language: ['cpp', 'c'])
 add_project_link_arguments(['-rdynamic', '-Wl,-E'], language: 'cpp')
-
-if get_option('buildtype') == 'debug' or get_option('enable_debug_output')
-  conf_data.set('WAYFIRE_DEBUG_ENABLED', true)
-else
-  conf_data.set('WAYFIRE_DEBUG_ENABLED', false)
-endif
-
-if get_option('enable_graphics_debug')
-  conf_data.set('WAYFIRE_GRAPHICS_DEBUG', true)
-else
-  conf_data.set('WAYFIRE_GRAPHICS_DEBUG', false)
-endif
 
 if get_option('enable_gles32') and meson.get_compiler('cpp').has_header(
     'GLES3/gl32.h', args: '-I' + glesv2.get_pkgconfig_variable('includedir'))
@@ -124,10 +112,8 @@ summary_begin = [
     ' system wlroots: @0@'.format(use_system_wlroots)]
 
 summary_end = [
-    '   debug output: @0@'.format(conf_data.get('WAYFIRE_DEBUG_ENABLED')),
     '        imageio: @0@'.format(conf_data.get('BUILD_WITH_IMAGEIO')),
     '         gles32: @0@'.format(conf_data.get('USE_GLES32')),
-    '   graphics dbg: @0@'.format(conf_data.get('WAYFIRE_GRAPHICS_DEBUG')),
     '----------------',
     ''
 ]

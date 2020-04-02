@@ -1,5 +1,4 @@
 #include "tree-controller.hpp"
-#include "../common/preview-indication.hpp"
 
 #include <set>
 #include <algorithm>
@@ -8,6 +7,7 @@
 #include <wayfire/workspace-manager.hpp>
 #include <wayfire/util.hpp>
 #include <wayfire/nonstd/reverse.hpp>
+#include <wayfire/plugins/common/preview-indication.hpp>
 
 namespace wf
 {

@@ -170,6 +170,31 @@ namespace OpenGL
         program.deactivate();
     }
 
+    void render_transformed_texture(wf::texture_t texture,
+        const wf::geometry_t& geometry, glm::mat4 transform,
+        glm::vec4 color, uint32_t bits)
+    {
+        bits &= ~TEXTURE_USE_TEX_GEOMETRY;
+
+        gl_geometry gg;
+        gg.x1 = geometry.x;
+        gg.y1 = geometry.y;
+        gg.x2 = gg.x1 + geometry.width;
+        gg.y2 = gg.y1 + geometry.height;
+        render_transformed_texture(texture, gg, {}, transform, color, bits);
+    }
+
+    void render_texture(wf::texture_t texture,
+        const wf::framebuffer_t& framebuffer,
+        const wf::geometry_t& geometry, glm::vec4 color, uint32_t bits)
+    {
+        wf::geometry_t actual_geometry = geometry;
+        actual_geometry.x += framebuffer.geometry.x;
+        actual_geometry.y += framebuffer.geometry.y;
+        render_transformed_texture(texture, actual_geometry,
+            framebuffer.get_orthographic_projection(), color, bits);
+    }
+
     void render_rectangle(wf::geometry_t geometry, wf::color_t color,
         glm::mat4 matrix)
     {
@@ -423,11 +448,11 @@ glm::mat4 get_output_matrix_from_transform(wl_output_transform transform)
     glm::mat4 rotation_matrix(1.0);
 
     if (rotation == WL_OUTPUT_TRANSFORM_90)
-        rotation_matrix = glm::rotate(rotation_matrix, -WF_PI / 2.0f, {0, 0, 1});
+        rotation_matrix = glm::rotate(rotation_matrix,  WF_PI / 2.0f, {0, 0, 1});
     if (rotation == WL_OUTPUT_TRANSFORM_180)
         rotation_matrix = glm::rotate(rotation_matrix,  WF_PI,        {0, 0, 1});
     if (rotation == WL_OUTPUT_TRANSFORM_270)
-        rotation_matrix = glm::rotate(rotation_matrix,  WF_PI / 2.0f, {0, 0, 1});
+        rotation_matrix = glm::rotate(rotation_matrix, -WF_PI / 2.0f, {0, 0, 1});
 
     return rotation_matrix * scale;
 }

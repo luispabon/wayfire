@@ -192,7 +192,6 @@ namespace wf
             if (view->is_mapped())
                 view->close();
 
-            from->workspace->remove_view(view);
             view->set_output(nullptr);
         }
         /* A note: at this point, some views might already have been deleted */
@@ -481,6 +480,8 @@ namespace wf
             {
                 get_core().focus_output(
                     get_core().output_layout->get_next_output(wo));
+            } else if (shutdown) {
+                get_core().focus_output(nullptr);
             }
 
             /* It doesn't make sense to transfer to another output if we're
@@ -793,6 +794,9 @@ namespace wf
             on_config_reload = [=] (void*) { reconfigure_from_config(); };
             get_core().connect_signal("reload-config", &on_config_reload);
             on_shutdown = [=] (void*) {
+                /* Disconnect timer, since otherwise it will be destroyed
+                 * after the wayland display is. */
+                this->timer_remove_noop.disconnect();
                 shutdown_received = true;
             };
             get_core().connect_signal("shutdown", &on_shutdown);

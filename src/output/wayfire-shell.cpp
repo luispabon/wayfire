@@ -190,15 +190,17 @@ class wfs_output : public noncopyable_t
         wf::get_core().output_layout->disconnect_signal("output-removed",
             &on_output_removed);
         output->disconnect_signal("fullscreen-layer-focused", &on_fullscreen_layer_focused);
-        this->output = nullptr;
     }
 
     wf::signal_callback_t on_output_removed = [=] (wf::signal_data_t *data)
     {
         auto ev = static_cast<output_removed_signal*> (data);
         if (ev->output == this->output)
+        {
             disconnect_from_output();
-       };
+            this->output = nullptr;
+        }
+    };
 
     wf::signal_callback_t on_fullscreen_layer_focused = [=] (wf::signal_data_t *data)
     {
@@ -244,7 +246,8 @@ class wfs_output : public noncopyable_t
     void inhibit_output()
     {
         ++this->num_inhibits;
-        this->output->render->add_inhibit(true);
+        if (this->output)
+            this->output->render->add_inhibit(true);
     }
 
     void inhibit_output_done()
@@ -256,7 +259,8 @@ class wfs_output : public noncopyable_t
         }
 
         --this->num_inhibits;
-        this->output->render->add_inhibit(false);
+        if (this->output)
+            this->output->render->add_inhibit(false);
     }
 
     void create_hotspot(uint32_t hotspot, uint32_t threshold, uint32_t timeout,
@@ -410,6 +414,7 @@ wayfire_shell* wayfire_shell_create(wl_display *display)
     if (ws->shell_manager == NULL)
     {
         LOGE("Failed to create wayfire_shell interface");
+        delete ws;
         return NULL;
     }
 

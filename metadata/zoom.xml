@@ -12,7 +12,7 @@
 		<option name="speed" type="double">
 			<_short>Speed</_short>
 			<_long>Sets the speed factor for zooming.</_long>
-			<default>0.005</default>
+			<default>0.01</default>
 			<precision>0.001</precision>
 		</option>
 		<option name="smoothing_duration" type="int">

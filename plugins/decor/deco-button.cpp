@@ -1,7 +1,7 @@
 #include "deco-button.hpp"
 #include "deco-theme.hpp"
 #include <wayfire/opengl.hpp>
-#include <cairo-util.hpp>
+#include <wayfire/plugins/common/cairo-util.hpp>
 
 #define HOVERED  1.0
 #define NORMAL   0.0
@@ -62,21 +62,10 @@ void button_t::set_pressed(bool is_pressed)
 void button_t::render(const wf::framebuffer_t& fb, wf::geometry_t geometry,
     wf::geometry_t scissor)
 {
-    assert(this->button_texture != uint32_t(-1));
-
     OpenGL::render_begin(fb);
     fb.scissor(scissor);
-
-    gl_geometry gg;
-    gg.x1 = geometry.x + fb.geometry.x;
-    gg.y1 = geometry.y + fb.geometry.y;
-    gg.x2 = gg.x1 + geometry.width;
-    gg.y2 = gg.y1 + geometry.height;
-
-    OpenGL::render_transformed_texture(button_texture, gg, {},
-        fb.get_orthographic_projection(), {1, 1, 1, 1},
-        TEXTURE_TRANSFORM_INVERT_Y);
-
+    OpenGL::render_texture(button_texture.tex, fb, geometry, {1, 1, 1, 1},
+        OpenGL::TEXTURE_TRANSFORM_INVERT_Y);
     OpenGL::render_end();
 
     if (this->hover.running())

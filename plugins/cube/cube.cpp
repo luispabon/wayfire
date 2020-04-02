@@ -255,6 +255,9 @@ class wayfire_cube : public wf::plugin_interface_t
     /* Disable custom rendering and deactivate plugin */
     void deactivate()
     {
+        if (!output->is_plugin_active(grab_interface->name))
+            return;
+
         output->render->set_renderer(nullptr);
         output->render->set_redraw_always(false);
 

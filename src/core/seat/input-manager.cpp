@@ -231,8 +231,11 @@ bool input_manager::grab_input(wf::plugin_grab_interface_t* iface)
 void input_manager::ungrab_input()
 {
     active_grab = nullptr;
-    wf::get_core().set_active_view(
-        wf::get_core().get_active_output()->get_active_view());
+    if (wf::get_core().get_active_output())
+    {
+        wf::get_core().set_active_view(
+            wf::get_core().get_active_output()->get_active_view());
+    }
 
     /* We must update cursor focus, however, if we update "too soon", the current
      * pointer event (button press/release, maybe something else) will be sent to

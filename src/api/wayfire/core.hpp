@@ -4,6 +4,7 @@
 #include "wayfire/object.hpp"
 #include <wayfire/geometry.hpp>
 
+#include <sys/types.h>
 #include <limits>
 #include <vector>
 #include <wayfire/nonstd/observer_ptr.h>
@@ -34,6 +35,7 @@ extern "C"
     struct wlr_relative_pointer_manager_v1;
     struct wlr_pointer_constraints_v1;
     struct wlr_tablet_manager_v2;
+    struct wlr_presentation;
 
 #include <wayland-server.h>
 }
@@ -99,6 +101,7 @@ class compositor_core_t : public wf::object_base_t
         wlr_relative_pointer_manager_v1 *relative_pointer;
         wlr_pointer_constraints_v1 *pointer_constraints;
         wlr_tablet_manager_v2 *tablet_v2;
+        wlr_presentation *presentation;
     } protocols;
 
     std::string to_string() const { return "wayfire-core"; }
@@ -236,9 +239,11 @@ class compositor_core_t : public wf::object_base_t
      * Execute the given command in a bash shell.
      *
      * This also sets some environment variables for the new process, including
-     * correct WAYLAND_DISPLAY and DISPLAY
+     * correct WAYLAND_DISPLAY and DISPLAY.
+     *
+     * @return The PID of the started client, or -1 on failure.
      */
-    virtual void run(std::string command) = 0;
+    virtual pid_t run(std::string command) = 0;
 
     /**
      * Returns a reference to the only core instance.

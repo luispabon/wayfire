@@ -123,6 +123,14 @@ class render_manager : public wf::signal_provider_t
 
     /**
      * @return The damaged region on the current output for the current
+     * frame that is used when swapping buffers. This function should
+     * only be called from overlay or postprocessing effect callbacks.
+     * Otherwise it will return an empty region.
+     */
+    wf::region_t get_swap_damage();
+
+    /**
+     * @return The damaged region on the current output for the current
      * frame. Note that a larger region might actually be repainted due to
      * double buffering
      */

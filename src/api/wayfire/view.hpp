@@ -418,7 +418,7 @@ class view_interface_t : public surface_interface_t, public wf::object_base_t
      * Note that generally most of the operations in 3. can be also done in 1.,
      * except when they require an output.
      */
-    virtual void initialize() {};
+    virtual void initialize();
 
     /** get_offset() is not valid for views */
     virtual wf::point_t get_offset() override { return {0, 0}; }

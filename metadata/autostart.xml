@@ -14,5 +14,10 @@
 				<hint>file</hint>
 			</option>
 		</group>
+		<option name="autostart_wf_shell" type="bool">
+			<_short>Autostart shell clients</_short>
+			<_long>Start wf-panel and wf-background if they are not listed as autostart entries.</_long>
+			<default>true</default>
+		</option>
 	</plugin>
 </wayfire>

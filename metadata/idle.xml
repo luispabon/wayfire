@@ -8,13 +8,13 @@
 		<option name="toggle" type="activator">
 			<_short>Toggle</_short>
 			<_long>Disables the compositor going idle with the specified activator.  Pressing again reactivates.</_long>
-			<default>&lt;super&gt; &lt;shift&gt; KEY_I</default>
+			<default>none</default>
 		</option>
 		<!-- Screensaver -->
 		<option name="screensaver_timeout" type="int">
 			<_short>Screensaver timeout</_short>
 			<_long>Displays the screensaver after the specified seconds of inactivity.  Setting the value to **-1** disables the screensaver.</_long>
-			<default>-1</default>
+			<default>3600</default>
 		</option>
 		<!-- DPMS -->
 		<option name="dpms_timeout" type="int">

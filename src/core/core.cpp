@@ -20,12 +20,18 @@ extern "C"
 #include <wlr/types/wlr_relative_pointer_v1.h>
 #include <wlr/types/wlr_pointer_constraints_v1.h>
 #include <wlr/types/wlr_tablet_v2.h>
+#include <wlr/types/wlr_presentation_time.h>
 
 #define static
 #include <wlr/render/wlr_renderer.h>
 #include <wlr/types/wlr_compositor.h>
 #undef static
 }
+
+/* Needed for pipe2 */
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
 
 #include <sys/wait.h>
 #include <unistd.h>
@@ -246,6 +252,8 @@ void wf::compositor_core_impl_t::init()
     pointer_constraint_added.connect(
         &protocols.pointer_constraints->events.new_constraint);
 
+    protocols.presentation = wlr_presentation_create(display, backend);
+
     wf_shell = wayfire_shell_create(display);
     gtk_shell = wf_gtk_shell_create(display);
 
@@ -342,12 +350,15 @@ wlr_cursor* wf::compositor_core_impl_t::get_wlr_cursor()
 
 void wf::compositor_core_impl_t::focus_output(wf::output_t *wo)
 {
-    assert(wo);
     if (active_output == wo)
         return;
 
-    /* Move to the middle of the output if this is the first output */
-    wo->ensure_pointer((active_output == nullptr));
+    if (wo)
+    {
+        LOGD("focus output: ", wo->handle->name);
+        /* Move to the middle of the output if this is the first output */
+        wo->ensure_pointer((active_output == nullptr));
+    }
 
     wf::plugin_grab_interface_t *old_grab = nullptr;
     if (active_output)
@@ -358,10 +369,6 @@ void wf::compositor_core_impl_t::focus_output(wf::output_t *wo)
     }
 
     active_output = wo;
-    if (wo)
-    {
-        LOGD("focus output: ", wo->handle->name);
-    }
 
     /* invariant: input is grabbed only if the current output
      * has an input grab */
@@ -371,6 +378,10 @@ void wf::compositor_core_impl_t::focus_output(wf::output_t *wo)
         input->ungrab_input();
     }
 
+    /* On shutdown */
+    if (!active_output)
+        return;
+
     auto output_impl = dynamic_cast<wf::output_impl_t*> (wo);
     wf::plugin_grab_interface_t *iface = output_impl->get_input_grab_interface();
     if (!iface) {
@@ -379,11 +390,8 @@ void wf::compositor_core_impl_t::focus_output(wf::output_t *wo)
         input->grab_input(iface);
     }
 
-    if (active_output)
-    {
-        wlr_output_schedule_frame(active_output->handle);
-        active_output->emit_signal("output-gain-focus", nullptr);
-    }
+    wlr_output_schedule_frame(active_output->handle);
+    active_output->emit_signal("output-gain-focus", nullptr);
 }
 
 wf::output_t* wf::compositor_core_impl_t::get_active_output()
@@ -416,7 +424,10 @@ int wf::compositor_core_impl_t::focus_layer(uint32_t layer, int32_t request_uid_
     layer_focus_requests.insert({layer, request_uid});
     LOGD("focusing layer ", get_focused_layer());
 
-    active_output->refocus();
+    if (active_output) {
+        active_output->refocus();
+    }
+
     return request_uid;
 }
 
@@ -534,14 +545,25 @@ void wf::compositor_core_impl_t::erase_view(wayfire_view v)
     views.erase(it);
 }
 
-void wf::compositor_core_impl_t::run(std::string command)
+pid_t wf::compositor_core_impl_t::run(std::string command)
 {
-    pid_t pid = fork();
+    static constexpr size_t READ_END = 0;
+    static constexpr size_t WRITE_END = 1;
+    pid_t pid;
+    int pipe_fd[2];
+    pipe2(pipe_fd, O_CLOEXEC);
 
     /* The following is a "hack" for disowning the child processes,
      * otherwise they will simply stay as zombie processes */
-    if (!pid) {
-        if (!fork()) {
+    pid = fork();
+    if (!pid)
+    {
+        pid = fork();
+        if (!pid)
+        {
+            close(pipe_fd[READ_END]);
+            close(pipe_fd[WRITE_END]);
+
             setenv("_JAVA_AWT_WM_NONREPARENTING", "1", 1);
             setenv("WAYLAND_DISPLAY", wayland_display.c_str(), 1);
 #if WLR_HAS_XWAYLAND
@@ -554,13 +576,26 @@ void wf::compositor_core_impl_t::run(std::string command)
             dup2(dev_null, 1);
             dup2(dev_null, 2);
 
-            _exit(execl("/bin/sh", "/bin/bash", "-c", command.c_str(), NULL));
-        } else {
+            _exit(execl("/bin/bash", "/bin/bash", "-c", command.c_str(), NULL));
+        } else
+        {
+            close(pipe_fd[READ_END]);
+            write(pipe_fd[WRITE_END], (void*) (&pid), sizeof(pid));
+            close(pipe_fd[WRITE_END]);
             _exit(0);
         }
-    } else {
+    } else
+    {
+        close(pipe_fd[WRITE_END]);
+
         int status;
         waitpid(pid, &status, 0);
+
+        pid_t child_pid;
+        read(pipe_fd[READ_END], &child_pid, sizeof(child_pid));
+
+        close(pipe_fd[READ_END]);
+        return child_pid;
     }
 }
 

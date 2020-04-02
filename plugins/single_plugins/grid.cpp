@@ -9,7 +9,7 @@
 #include <cmath>
 #include <linux/input-event-codes.h>
 #include "wayfire/signal-definitions.hpp"
-#include "../common/geometry-animation.hpp"
+#include <wayfire/plugins/common/geometry-animation.hpp>
 
 #include "snap_signal.hpp"
 #include "../wobbly/wobbly-signal.hpp"
@@ -218,7 +218,11 @@ class wayfire_grid : public wf::plugin_interface_t
     {
         if (!output->can_activate_plugin(grab_interface))
             return false;
+
         auto view = output->get_active_view();
+        if (!view || view->role != wf::VIEW_ROLE_TOPLEVEL)
+            return false;
+
         view->tile_request(0);
         return true;
     };

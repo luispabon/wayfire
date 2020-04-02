@@ -7,9 +7,7 @@
 #define PLUGIN_XML_DIR "@PLUGIN_XML_DIR@"
 #define SYSCONFDIR "@SYSCONFDIR@"
 #mesondefine BUILD_WITH_IMAGEIO
-#mesondefine WAYFIRE_DEBUG_ENABLED
 #mesondefine USE_GLES32
-#mesondefine WAYFIRE_GRAPHICS_DEBUG
 
 
 #endif /* end of include guard: CONFIG_H */

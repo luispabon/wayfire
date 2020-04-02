@@ -76,7 +76,7 @@ class compositor_core_impl_t : public compositor_core_t
     void unfocus_layer(int request) override;
     uint32_t get_focused_layer() override;
     int get_xwayland_display() override;
-    void run(std::string command) override;
+    pid_t run(std::string command) override;
 
   private:
     wf::wl_listener_wrapper output_layout_changed;

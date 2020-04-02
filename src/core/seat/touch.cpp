@@ -99,7 +99,7 @@ void wf_gesture_recognizer::continue_gesture()
     if (swipe_dir)
     {
         wf::touchgesture_t gesture {
-            wf::GESTURE_TYPE_EDGE_SWIPE, swipe_dir, (int)current.size()
+            wf::GESTURE_TYPE_SWIPE, swipe_dir, (int)current.size()
         };
 
         bool bottom_edge = false, upper_edge = false,
@@ -132,7 +132,7 @@ void wf_gesture_recognizer::continue_gesture()
         if ((edge_swipe_dir & swipe_dir) == swipe_dir)
         {
             gesture =  {
-                wf::GESTURE_TYPE_SWIPE, swipe_dir, (int)current.size()
+                wf::GESTURE_TYPE_EDGE_SWIPE, swipe_dir, (int)current.size()
             };
         }
 

@@ -44,9 +44,23 @@ if conf_data.get('BUILD_WITH_IMAGEIO')
     wayfire_dependencies += [jpeg, png]
 endif
 
+debug_arguments = []
+
+addr2line = find_program('addr2line', required: false)
+if addr2line.found()
+  debug_arguments += ['-DHAS_ADDR2LINE=1']
+else
+  debug_arguments += ['-DHAS_ADDR2LINE=0']
+endif
+
+if get_option('b_sanitize').contains('address')
+  debug_arguments += ['-DASAN_ENABLED']
+endif
+
 executable('wayfire', wayfire_sources,
         dependencies: wayfire_dependencies,
         include_directories: [wayfire_conf_inc, wayfire_api_inc],
+        cpp_args: debug_arguments,
         link_args: '-ldl',
         install: true)
 
