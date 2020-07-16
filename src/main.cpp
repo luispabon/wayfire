@@ -32,13 +32,15 @@ extern "C"
 wf_runtime_config runtime_config;
 
 #define INOT_BUF_SIZE (1024 * sizeof(inotify_event))
-char buf[INOT_BUF_SIZE];
+static char buf[INOT_BUF_SIZE];
 
-static std::string config_file;
+static std::string config_dir, config_file;
+
 static void reload_config(int fd)
 {
     wf::config::load_configuration_options_from_file(
         wf::get_core().config, config_file);
+    inotify_add_watch(fd, config_dir.c_str(), IN_CREATE);
     inotify_add_watch(fd, config_file.c_str(), IN_MODIFY);
 }
 
@@ -51,7 +53,25 @@ static int handle_config_updated(int fd, uint32_t mask, void *data)
     reload_config(fd);
 
     wf::get_core().emit_signal("reload-config", nullptr);
-    return 1;
+    return 0;
+}
+
+static void print_version()
+{
+     std::cout << WAYFIRE_VERSION << std::endl;
+     exit(0);
+}
+static void print_help()
+{
+     std::cout << "Wayfire " << WAYFIRE_VERSION                                           << std::endl;
+     std::cout << "Usage: wayfire [OPTION]...\n"                                          << std::endl;
+     std::cout << " -c,  --config            specify config file to use"                  << std::endl;
+     std::cout << " -h,  --help              print this help"                             << std::endl;
+     std::cout << " -d,  --debug             enable debug logging"                        << std::endl;
+     std::cout << " -D,  --damage-debug      enable additional debug for damaged regions" << std::endl;
+     std::cout << " -R,  --damage-rerender   rerender damaged regions"                    << std::endl;
+     std::cout << " -v,  --version           print version and exit"                      << std::endl;
+     exit(0);
 }
 
 std::map<EGLint, EGLint> default_attribs = {
@@ -136,13 +156,14 @@ static bool drop_permissions(void)
 {
     if (getuid() != geteuid() || getgid() != getegid())
     {
-        if (setuid(getuid()) != 0 || setgid(getgid()) != 0)
+        //Set the gid and uid in the correct order.
+        if (setgid(getgid()) != 0 || setuid(getuid()) != 0)
         {
             LOGE("Unable to drop root, refusing to start");
             return false;
         }
     }
-    if (setuid(0) != -1)
+    if (setgid(0) != -1 || setuid(0) != -1)
     {
         LOGE("Unable to drop root (we shouldn't be able to "
             "restore it after setuid), refusing to start");
@@ -202,45 +223,53 @@ static void signal_handler(int signal)
     }
 
     LOGE("Fatal error: ", error);
-    wf::print_trace();
+    wf::print_trace(false);
     std::exit(0);
 }
 
 int main(int argc, char *argv[])
 {
-    std::string config_dir = nonull(getenv("XDG_CONFIG_HOME"));
+    config_dir = nonull(getenv("XDG_CONFIG_HOME"));
     if (!config_dir.compare("nil"))
-        config_dir = std::string(nonull(getenv("HOME"))) + "/.config/";
-    config_file = config_dir + "wayfire.ini";
+        config_dir = std::string(nonull(getenv("HOME"))) + "/.config";
+    config_file = config_dir + "/wayfire.ini";
 
     wf::log::log_level_t log_level = wf::log::LOG_LEVEL_INFO;
     struct option opts[] = {
         { "config",          required_argument, NULL, 'c' },
-        { "damage-debug",    no_argument,       NULL, 'd' },
+        { "debug",           no_argument,       NULL, 'd' },
+        { "damage-debug",    no_argument,       NULL, 'D' },
         { "damage-rerender", no_argument,       NULL, 'R' },
-        { "verbose",         no_argument,       NULL, 'v' },
+        { "help",            no_argument,       NULL, 'h' },
+        { "version",         no_argument,       NULL, 'v' },
         { 0,                 0,                 NULL,  0  }
     };
 
     int c, i;
-    while((c = getopt_long(argc, argv, "c:dRv", opts, &i)) != -1)
+    while((c = getopt_long(argc, argv, "c:dDhRv", opts, &i)) != -1)
     {
         switch(c)
         {
             case 'c':
                 config_file = optarg;
                 break;
-            case 'd':
+            case 'D':
                 runtime_config.damage_debug = true;
                 break;
             case 'R':
                 runtime_config.no_damage_track = true;
                 break;
-            case 'v':
+            case 'h':
+                print_help();
+                break;
+            case 'd':
                 log_level = wf::log::LOG_LEVEL_DEBUG;
                 break;
+            case 'v':
+                print_version();
+                break;
             default:
-                std::cerr << "Unrecognized command line argument " << optarg << std::endl;
+                std::cerr << "Unrecognized command line argument " << optarg << "\n" << std::endl;
         }
     }
 
@@ -257,7 +286,7 @@ int main(int argc, char *argv[])
     signal(SIGABRT, signal_handler);
 #endif
 
-    LOGI("Starting wayfire");
+    LOGI("Starting wayfire version ", WAYFIRE_VERSION);
     /* First create display and initialize safe-list's event loop, so that
      * wf objects (which depend on safe-list) can work */
     auto display = wl_display_create();

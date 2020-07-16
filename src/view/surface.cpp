@@ -1,6 +1,5 @@
 #include <algorithm>
 #include <map>
-#include <wayfire/debug.hpp>
 #include <wayfire/util/log.hpp>
 extern "C"
 {
@@ -27,44 +26,37 @@ extern "C"
 /****************************
  * surface_interface_t functions
  ****************************/
-wf::surface_interface_t::surface_interface_t(surface_interface_t *parent)
+wf::surface_interface_t::surface_interface_t()
 {
     this->priv = std::make_unique<impl>();
-    take_ref();
-    this->priv->parent_surface = parent;
+    this->priv->parent_surface = nullptr;
+}
 
-    if (parent)
-    {
-        set_output(parent->get_output());
-        parent->priv->surface_children.insert(
-            parent->priv->surface_children.begin(), this);
-    }
+void wf::surface_interface_t::add_subsurface(
+    std::unique_ptr<surface_interface_t> subsurface, bool is_below_parent)
+{
+    subsurface->priv->parent_surface = this;
+    subsurface->set_output(get_output());
+    auto& container = is_below_parent ?
+        priv->surface_children_below : priv->surface_children_above;
+    container.insert(container.begin(), std::move(subsurface));
+}
+
+void wf::surface_interface_t::remove_subsurface(
+    nonstd::observer_ptr<surface_interface_t> subsurface)
+{
+    auto remove_from = [=] (auto& container) {
+        auto it = std::remove_if(container.begin(), container.end(),
+            [=] (const auto& ptr) { return ptr.get() == subsurface.get(); });
+        container.erase(it, container.end());
+    };
+
+    remove_from(priv->surface_children_above);
+    remove_from(priv->surface_children_below);
 }
 
 wf::surface_interface_t::~surface_interface_t()
-{
-    if (priv->parent_surface)
-    {
-        auto& container = priv->parent_surface->priv->surface_children;
-        auto it = std::remove(container.begin(), container.end(), this);
-        container.erase(it, container.end());
-    }
-
-    for (auto c : priv->surface_children)
-        c->priv->parent_surface = nullptr;
-}
-
-void wf::surface_interface_t::take_ref()
-{
-    ++priv->ref_cnt;
-}
-
-void wf::surface_interface_t::unref()
-{
-    --priv->ref_cnt;
-    if (priv->ref_cnt <= 0)
-        destruct();
-}
+{ }
 
 wf::surface_interface_t *wf::surface_interface_t::get_main_surface()
 {
@@ -78,20 +70,25 @@ std::vector<wf::surface_iterator_t> wf::surface_interface_t::enumerate_surfaces(
     wf::point_t surface_origin)
 {
     std::vector<wf::surface_iterator_t> result;
-    for (auto& child : priv->surface_children)
+    auto add_surfaces_recursive = [&] (surface_interface_t* child)
     {
-        if (child->is_mapped())
-        {
-            auto child_surfaces = child->enumerate_surfaces(
-                child->get_offset() + surface_origin);
+        if (!child->is_mapped())
+            return;
 
-            result.insert(result.end(),
-                child_surfaces.begin(), child_surfaces.end());
-        }
-    }
+        auto child_surfaces = child->enumerate_surfaces(
+            child->get_offset() + surface_origin);
+        result.insert(result.end(),
+            child_surfaces.begin(), child_surfaces.end());
+    };
+
+    for (auto& child : priv->surface_children_above)
+        add_surfaces_recursive(child.get());
 
     if (is_mapped())
         result.push_back({this, surface_origin});
+
+    for (auto& child : priv->surface_children_below)
+        add_surfaces_recursive(child.get());
 
     return result;
 }
@@ -104,7 +101,9 @@ wf::output_t *wf::surface_interface_t::get_output()
 void wf::surface_interface_t::set_output(wf::output_t* output)
 {
     priv->output = output;
-    for (auto& c : priv->surface_children)
+    for (auto& c : priv->surface_children_above)
+        c->set_output(output);
+    for (auto& c : priv->surface_children_below)
         c->set_output(output);
 }
 
@@ -131,11 +130,6 @@ int wf::surface_interface_t::get_active_shrink_constraint()
     return impl::active_shrink_constraint;
 }
 
-void wf::surface_interface_t::destruct()
-{
-    delete this;
-}
-
 /****************************
  * surface_interface_t functions for surfaces which are
  * backed by a wlr_surface
@@ -154,34 +148,15 @@ bool wf::surface_interface_t::accepts_input(int32_t sx, int32_t sy)
     return wlr_surface_point_accepts_input(priv->wsurface, sx, sy);
 }
 
-void wf::surface_interface_t::impl::scale_opaque_region(
-    wf::region_t& region, int shrink)
-{
-    region *= output->handle->scale;
-    /* region scaling uses std::ceil/std::floor, so the resulting region
-     * encompasses the opaque region. However, in the case of opaque region, we
-     * don't want any pixels that aren't actually opaque. So in case of
-     * different scales, we just shrink by 1 to compensate for the ceil/floor
-     * discrepancy */
-    int ceil_factor = 0;
-    if ((wsurface && output->handle->scale != (float)wsurface->current.scale) ||
-        (!wsurface && output->handle->scale != std::round(output->handle->scale)))
-    {
-        ceil_factor = 1;
-    }
-
-    region.expand_edges(-shrink - ceil_factor);
-}
-
-void wf::surface_interface_t::subtract_opaque(wf::region_t& region, int x, int y)
+wf::region_t wf::surface_interface_t::get_opaque_region(wf::point_t origin)
 {
     if (!priv->wsurface)
-        return;
+        return {};
 
     wf::region_t opaque{&priv->wsurface->opaque_region};
-    opaque += wf::point_t{x, y};
-    priv->scale_opaque_region(opaque, get_active_shrink_constraint());
-    region ^= opaque;
+    opaque += origin;
+    opaque.expand_edges(-get_active_shrink_constraint());
+    return opaque;
 }
 
 wl_client* wf::surface_interface_t::get_client()
@@ -232,10 +207,11 @@ wf::wlr_surface_base_t::wlr_surface_base_t(surface_interface_t *self)
         if (!sub->parent->data)
             return;
 
-        // will be deleted by destruct()
-        auto subsurface = new subsurface_implementation_t(sub, _as_si);
+        auto subsurface = std::make_unique<subsurface_implementation_t>(sub);
+        nonstd::observer_ptr<subsurface_implementation_t> ptr{subsurface};
+        _as_si->add_subsurface(std::move(subsurface), false);
         if (sub->mapped)
-            subsurface->map(sub->surface);
+            ptr->map(sub->surface);
     };
 
     on_new_subsurface.set_callback(handle_new_subsurface);
@@ -377,18 +353,14 @@ void wf::wlr_surface_base_t::_simple_render(const wf::framebuffer_t& fb,
     OpenGL::render_begin(fb);
     for (const auto& rect : damage)
     {
-        auto box = wlr_box_from_pixman_box(rect);
-        fb.scissor(fb.framebuffer_box_from_damage_box(box));
+        fb.logic_scissor(wlr_box_from_pixman_box(rect));
         OpenGL::render_texture(texture, fb, geometry);
     }
     OpenGL::render_end();
 }
 
 wf::wlr_child_surface_base_t::wlr_child_surface_base_t(
-    surface_interface_t *parent, surface_interface_t *self) :
-      wf::surface_interface_t(parent),
-      wlr_surface_base_t(self)
-{
-}
+    surface_interface_t *self) : wlr_surface_base_t(self)
+{ }
 
 wf::wlr_child_surface_base_t::~wlr_child_surface_base_t() { }

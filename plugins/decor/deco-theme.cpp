@@ -43,27 +43,10 @@ int decoration_theme_t::get_border_size() const
 void decoration_theme_t::render_background(const wf::framebuffer_t& fb,
     wf::geometry_t rectangle, const wf::geometry_t& scissor, bool active) const
 {
-    /* Prepare matrices */
-    rectangle = fb.damage_box_from_geometry_box(rectangle);
-
-    float projection[9];
-    wlr_matrix_projection(projection,
-        fb.viewport_width, fb.viewport_height,
-        (wl_output_transform)fb.wl_transform);
-
-    float matrix[9];
-    wlr_matrix_project_box(matrix, &rectangle,
-        WL_OUTPUT_TRANSFORM_NORMAL, 0, projection);
-
-    /* Calculate color */
     wf::color_t color = active ? active_color : inactive_color;
-    float color4f[] = {
-        (float)color.r, (float)color.g, (float)color.b, (float)color.a};
-
-    /* Actual rendering */
     OpenGL::render_begin(fb);
-    fb.scissor(scissor);
-    wlr_render_quad_with_matrix(wf::get_core().renderer, color4f, matrix);
+    fb.logic_scissor(scissor);
+    OpenGL::render_rectangle(rectangle, color, fb.get_orthographic_projection());
     OpenGL::render_end();
 }
 
@@ -139,24 +122,6 @@ cairo_surface_t *decoration_theme_t::get_button_surface(button_type_t button,
     const button_state_t& state) const
 {
     cairo_surface_t *button_icon = cache.load_icon(button);
-    std::string resource_path =
-        INSTALL_PREFIX "/share/wayfire/decoration/resources/";
-    switch (button)
-    {
-        case BUTTON_CLOSE:
-            resource_path += "close.png";
-            break;
-        case BUTTON_TOGGLE_MAXIMIZE:
-            resource_path += "maximize.png";
-            break;
-        case BUTTON_MINIMIZE:
-            resource_path += "minimize.png";
-            break;
-        default:
-            assert(false);
-    }
-
-    button_icon = cairo_image_surface_create_from_png(resource_path.c_str());
     cairo_surface_t *button_surface = cairo_image_surface_create(
         CAIRO_FORMAT_ARGB32, state.width, state.height);
     auto cr = cairo_create(button_surface);
@@ -195,8 +160,6 @@ cairo_surface_t *decoration_theme_t::get_button_surface(button_type_t button,
     cairo_fill(cr);
 
     cairo_destroy(cr);
-    cairo_surface_destroy(button_icon);
-
     return button_surface;
 }
 

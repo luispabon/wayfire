@@ -54,18 +54,20 @@ class compositor_core_impl_t : public compositor_core_t
     uint32_t get_keyboard_modifiers() override;
     void set_cursor(std::string name) override;
     void hide_cursor() override;
-    void warp_cursor(int x, int y) override;
+    void warp_cursor(wf::pointf_t pos) override;
 
     wf::pointf_t get_cursor_position() override;
     wf::pointf_t get_touch_position(int id) override;
 
     wf::surface_interface_t *get_cursor_focus() override;
     wf::surface_interface_t *get_touch_focus() override;
+    wf::surface_interface_t *get_surface_at(wf::pointf_t point) override;
 
     std::vector<nonstd::observer_ptr<wf::input_device_t>> get_input_devices() override;
     virtual wlr_cursor* get_wlr_cursor() override;
 
     void add_view(std::unique_ptr<wf::view_interface_t> view) override;
+    std::vector<wayfire_view> get_all_views() override;
     void set_active_view(wayfire_view v) override;
     void focus_view(wayfire_view win) override;
     void move_view_to_output(wayfire_view v, wf::output_t *new_output) override;
@@ -75,11 +77,10 @@ class compositor_core_impl_t : public compositor_core_t
     int focus_layer(uint32_t layer, int request) override;
     void unfocus_layer(int request) override;
     uint32_t get_focused_layer() override;
-    int get_xwayland_display() override;
+    std::string get_xwayland_display() override;
     pid_t run(std::string command) override;
 
   private:
-    wf::wl_listener_wrapper output_layout_changed;
     wf::wl_listener_wrapper decoration_created;
     wf::wl_listener_wrapper xdg_decoration_created;
     wf::wl_listener_wrapper vkbd_created;
@@ -95,6 +96,12 @@ class compositor_core_impl_t : public compositor_core_t
     std::set<std::pair<uint32_t, int>> layer_focus_requests;
 
     wayfire_view last_active_toplevel;
+
+    /**
+     * The last view which was attempted to be focused.
+     * The view might not actually have focus, because of plugin grabs.
+     */
+    wayfire_view last_active_view;
 
     compositor_core_impl_t();
     virtual ~compositor_core_impl_t();

@@ -188,10 +188,7 @@ namespace OpenGL
         const wf::framebuffer_t& framebuffer,
         const wf::geometry_t& geometry, glm::vec4 color, uint32_t bits)
     {
-        wf::geometry_t actual_geometry = geometry;
-        actual_geometry.x += framebuffer.geometry.x;
-        actual_geometry.y += framebuffer.geometry.y;
-        render_transformed_texture(texture, actual_geometry,
+        render_transformed_texture(texture, geometry,
             framebuffer.get_orthographic_projection(), color, bits);
     }
 
@@ -378,8 +375,16 @@ void wf::framebuffer_base_t::reset()
     viewport_width = viewport_height = 0;
 }
 
-wlr_box wf::framebuffer_t::framebuffer_box_from_damage_box(wlr_box box) const
+wlr_box wf::framebuffer_t::framebuffer_box_from_geometry_box(wlr_box box) const
 {
+    /* Step 1: Make relative to the framebuffer */
+    box.x -= this->geometry.x;
+    box.y -= this->geometry.y;
+
+    /* Step 2: Apply scale to box */
+    wlr_box scaled = box * scale;
+
+    /* Step 3: rotate */
     if (has_nonstandard_transform)
     {
         // TODO: unimplemented, but also unused for now
@@ -392,34 +397,12 @@ wlr_box wf::framebuffer_t::framebuffer_box_from_damage_box(wlr_box box) const
     if (wl_transform & 1)
         std::swap(width, height);
 
-    wlr_box result = box;
+    wlr_box result;
     wl_output_transform transform =
         wlr_output_transform_invert((wl_output_transform)wl_transform);
 
-   // LOGI("got %d,%d %dx%d, %d", box.x, box.y, box.width, box.height, wl_transform);
-    wlr_box_transform(&result, &box, transform, width, height);
-  //  LOGI("tr %d,%d %dx%d", box.x, box.y, box.width, box.height);
+    wlr_box_transform(&result, &scaled, transform, width, height);
     return result;
-}
-
-wlr_box wf::framebuffer_t::damage_box_from_geometry_box(wlr_box box) const
-{
-    box.x = std::floor(box.x * scale);
-    box.y = std::floor(box.y * scale);
-    box.width = std::ceil(box.width * scale);
-    box.height = std::ceil(box.height * scale);
-
-    return box;
-}
-
-wlr_box wf::framebuffer_t::framebuffer_box_from_geometry_box(wlr_box box) const
-{
-    return framebuffer_box_from_damage_box(damage_box_from_geometry_box(box));
-}
-
-wf::region_t wf::framebuffer_t::get_damage_region() const
-{
-    return damage_box_from_geometry_box({0, 0, geometry.width, geometry.height});
 }
 
 glm::mat4 wf::framebuffer_t::get_orthographic_projection() const
@@ -432,7 +415,10 @@ glm::mat4 wf::framebuffer_t::get_orthographic_projection() const
     return this->transform * ortho;
 }
 
-#define WF_PI 3.141592f
+void wf::framebuffer_t::logic_scissor(wlr_box box) const
+{
+    scissor(framebuffer_box_from_geometry_box(box));
+}
 
 /* look up the actual values of wl_output_transform enum
  * All _flipped transforms have values (regular_transfrom + 4) */
@@ -441,18 +427,18 @@ glm::mat4 get_output_matrix_from_transform(wl_output_transform transform)
     glm::mat4 scale = glm::mat4(1.0);
 
     if (transform >= 4)
-        scale = glm::scale(scale, {-1, 1, 0});
+        scale = glm::scale(scale, {-1, 1, 1});
 
     /* remove the third bit if it's set */
     uint32_t rotation = transform & (~4);
     glm::mat4 rotation_matrix(1.0);
 
     if (rotation == WL_OUTPUT_TRANSFORM_90)
-        rotation_matrix = glm::rotate(rotation_matrix,  WF_PI / 2.0f, {0, 0, 1});
+        rotation_matrix = glm::rotate(rotation_matrix, glm::radians(90.0f), {0, 0, 1});
     if (rotation == WL_OUTPUT_TRANSFORM_180)
-        rotation_matrix = glm::rotate(rotation_matrix,  WF_PI,        {0, 0, 1});
+        rotation_matrix = glm::rotate(rotation_matrix, glm::radians(180.0f), {0, 0, 1});
     if (rotation == WL_OUTPUT_TRANSFORM_270)
-        rotation_matrix = glm::rotate(rotation_matrix, -WF_PI / 2.0f, {0, 0, 1});
+        rotation_matrix = glm::rotate(rotation_matrix, glm::radians(270.0f), {0, 0, 1});
 
     return rotation_matrix * scale;
 }

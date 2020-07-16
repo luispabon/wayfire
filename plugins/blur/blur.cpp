@@ -13,12 +13,14 @@ class wf_blur_transformer : public wf::view_transformer_t
 {
     blur_algorithm_provider provider;
     wf::output_t *output;
+    wayfire_view view;
   public:
     wf_blur_transformer(blur_algorithm_provider blur_algorithm_provider,
-        wf::output_t *output)
+        wf::output_t *output, wayfire_view view)
     {
         provider = blur_algorithm_provider;
         this->output = output;
+        this->view = view;
     }
 
     wf::pointf_t transform_point(wf::geometry_t view,
@@ -45,18 +47,56 @@ class wf_blur_transformer : public wf::view_transformer_t
     }
 
     uint32_t get_z_order() override { return wf::TRANSFORMER_BLUR; }
+
+    /* Render without blending */
+    void direct_render(wf::texture_t src_tex, wlr_box src_box,
+        const wf::region_t& damage, const wf::framebuffer_t& target_fb)
+    {
+        OpenGL::render_begin(target_fb);
+        for (auto& rect : damage)
+        {
+            target_fb.logic_scissor(wlr_box_from_pixman_box(rect));
+            OpenGL::render_texture(src_tex, target_fb, src_box);
+        }
+
+        OpenGL::render_end();
+    }
+
     void render_with_damage(wf::texture_t src_tex, wlr_box src_box,
         const wf::region_t& damage, const wf::framebuffer_t& target_fb) override
     {
-        wlr_box box = src_box;
-        box.x -= target_fb.geometry.x;
-        box.y -= target_fb.geometry.y;
+        wf::region_t clip_damage = damage & src_box;
 
-        box = target_fb.damage_box_from_geometry_box(box);
-        wf::region_t clip_damage = damage & box;
+        /* We want to check if the opaque region completely occludes
+         * the bounding box. If this is the case, we can skip blurring
+         * altogether and just render the surface. First we disable
+         * shrinking and get the opaque region without padding */
+        wf::surface_interface_t::set_opaque_shrink_constraint("blur", 0);
+        wf::region_t full_opaque = view->get_transformed_opaque_region();
 
-        provider()->pre_render(src_tex, src_box, clip_damage, target_fb);
-        wf::view_transformer_t::render_with_damage(src_tex, src_box, clip_damage, target_fb);
+        /* Shrink the opaque region by the padding amount since the render
+         * chain expects this, as we have applied padding to damage in
+         * frame_pre_paint for this frame already */
+        int padding = std::ceil(provider()->calculate_blur_radius() /
+            output->render->get_target_framebuffer().scale);
+        wf::surface_interface_t::set_opaque_shrink_constraint("blur", padding);
+
+        wf::region_t bbox_region{src_box};
+        if ((bbox_region ^ full_opaque).empty())
+        {
+            /* In case the whole surface is opaque, we can simply skip blurring */
+            direct_render(src_tex, src_box, damage, target_fb);
+            return;
+        }
+
+        wf::region_t opaque_region = view->get_transformed_opaque_region();
+        wf::region_t blurred_region = clip_damage ^ opaque_region;
+
+        provider()->pre_render(src_tex, src_box, blurred_region, target_fb);
+        wf::view_transformer_t::render_with_damage(src_tex, src_box, blurred_region, target_fb);
+
+        /* Opaque non-blurred regions can be rendered directly without blending */
+        direct_render(src_tex, src_box, opaque_region & clip_damage, target_fb);
     }
 
     void render_box(wf::texture_t src_tex, wlr_box src_box, wlr_box scissor_box,
@@ -95,7 +135,7 @@ class wayfire_blur : public wf::plugin_interface_t
 
         view->add_transformer(std::make_unique<wf_blur_transformer> (
                 [=] () {return nonstd::make_observer(blur_algorithm.get()); },
-                output),
+                output, view),
             transformer_name);
     }
 
@@ -119,7 +159,7 @@ class wayfire_blur : public wf::plugin_interface_t
 
         blur_method_changed = [=] () {
             blur_algorithm = create_blur_from_name(output, method_opt);
-            blur_algorithm->damage_all_workspaces();
+            output->render->damage_whole();
         };
         /* Create initial blur algorithm */
         blur_method_changed();
@@ -211,20 +251,25 @@ class wayfire_blur : public wf::plugin_interface_t
          * that comes from client damage */
         frame_pre_paint = [=] ()
         {
-            int padding = blur_algorithm->calculate_blur_radius();
+            auto damage = output->render->get_scheduled_damage();
+            const auto& fb = output->render->get_target_framebuffer();
+
+            int padding = std::ceil(blur_algorithm->calculate_blur_radius() / fb.scale);
             wf::surface_interface_t::set_opaque_shrink_constraint("blur",
                 padding);
 
-            auto damage = output->render->get_scheduled_damage();
+            wf::region_t padded;
             for (const auto& rect : damage)
             {
-                output->render->damage(wlr_box{
-                        rect.x1 - padding,
-                        rect.y1 - padding,
-                        (rect.x2 - rect.x1) + 2 * padding,
-                        (rect.y2 - rect.y1) + 2 * padding
-                });
+                padded |= wlr_box{
+                    (rect.x1 - padding),
+                    (rect.y1 - padding),
+                    (rect.x2 - rect.x1) + 2 * padding,
+                    (rect.y2 - rect.y1) + 2 * padding
+                };
             }
+
+            output->render->damage(padded);
         };
         output->render->add_effect(&frame_pre_paint, wf::OUTPUT_EFFECT_PRE);
 
@@ -237,12 +282,14 @@ class wayfire_blur : public wf::plugin_interface_t
         workspace_stream_pre = [=] (wf::signal_data_t *data)
         {
             auto& damage = static_cast<wf::stream_signal_t*>(data)->raw_damage;
+            const auto& ws = static_cast<wf::stream_signal_t*>(data)->ws;
             const auto& target_fb = static_cast<wf::stream_signal_t*>(data)->fb;
 
             /* As long as the padding is big enough to cover the
              * furthest sampled pixel by the shader, there should
              * be no visual artifacts. */
-            int padding = blur_algorithm->calculate_blur_radius();
+            int padding = std::ceil(
+                blur_algorithm->calculate_blur_radius() / target_fb.scale);
 
             wf::region_t expanded_damage;
             for (const auto& rect : damage)
@@ -256,9 +303,15 @@ class wayfire_blur : public wf::plugin_interface_t
             }
 
             /* Keep rects on screen */
-            expanded_damage &= output->render->get_damage_box();
+            expanded_damage &= output->render->get_ws_box(ws);
 
-            /* Compute padded region and store result in padded_region. */
+            /* Compute padded region and store result in padded_region.
+             * We need to be careful, because core needs to scale the damage
+             * back and forth for wlroots. */
+            expanded_damage *= target_fb.scale;
+            expanded_damage *= (1.0 / target_fb.scale);
+            damage *= target_fb.scale;
+            damage *= (1.0 / target_fb.scale);
             padded_region = expanded_damage ^ damage;
 
             OpenGL::render_begin(target_fb);
@@ -276,7 +329,7 @@ class wayfire_blur : public wf::plugin_interface_t
             for (const auto& rect : padded_region)
             {
                 pixman_box32_t box = pixman_box_from_wlr_box(
-                    target_fb.framebuffer_box_from_damage_box(
+                    target_fb.framebuffer_box_from_geometry_box(
                         wlr_box_from_pixman_box(rect)));
 
                 GL_CALL(glBlitFramebuffer(
@@ -312,7 +365,7 @@ class wayfire_blur : public wf::plugin_interface_t
             for (const auto& rect : padded_region)
             {
                 pixman_box32_t box = pixman_box_from_wlr_box(
-                    target_fb.framebuffer_box_from_damage_box(
+                    target_fb.framebuffer_box_from_geometry_box(
                         wlr_box_from_pixman_box(rect)));
 
                 GL_CALL(glBlitFramebuffer(box.x1, box.y1, box.x2, box.y2,

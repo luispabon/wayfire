@@ -1,6 +1,8 @@
 #ifndef CUBE_CONTROL_SIGNAL
 #define CUBE_CONTROL_SIGNAL
 
+#include <wayfire/signal-definitions.hpp>
+
 /* A private signal, currently shared by idle & cube
  *
  * It is used to rotate the cube from the idle plugin as a screensaver.

@@ -18,7 +18,6 @@ extern "C"
     struct wlr_cursor;
     struct wlr_data_device_manager;
     struct wlr_data_control_manager_v1;
-    struct wlr_linux_dmabuf_v1;
     struct wlr_gamma_control_manager_v1;
     struct wlr_xdg_output_manager_v1;
     struct wlr_export_dmabuf_manager_v1;
@@ -36,6 +35,8 @@ extern "C"
     struct wlr_pointer_constraints_v1;
     struct wlr_tablet_manager_v2;
     struct wlr_presentation;
+    struct wlr_gtk_primary_selection_device_manager;
+    struct wlr_primary_selection_v1_device_manager;
 
 #include <wayland-server.h>
 }
@@ -86,7 +87,6 @@ class compositor_core_t : public wf::object_base_t
         wlr_data_control_manager_v1 *data_control;
         wlr_gamma_control_manager_v1 *gamma_v1;
         wlr_screencopy_manager_v1 *screencopy;
-        wlr_linux_dmabuf_v1 *linux_dmabuf;
         wlr_export_dmabuf_manager_v1 *export_dmabuf;
         wlr_server_decoration_manager *decorator_manager;
         wlr_xdg_decoration_manager_v1 *xdg_decorator;
@@ -102,6 +102,8 @@ class compositor_core_t : public wf::object_base_t
         wlr_pointer_constraints_v1 *pointer_constraints;
         wlr_tablet_manager_v2 *tablet_v2;
         wlr_presentation *presentation;
+        wlr_gtk_primary_selection_device_manager *gtk_primary_selection;
+        wlr_primary_selection_v1_device_manager *primary_selection_v1;
     } protocols;
 
     std::string to_string() const { return "wayfire-core"; }
@@ -121,8 +123,11 @@ class compositor_core_t : public wf::object_base_t
     virtual void set_cursor(std::string name) = 0;
     /** Hides the cursor, until something sets it up again, for ex. by set_cursor() */
     virtual void hide_cursor() = 0;
-    /** Sends an absolute motion event. x and y should be passed in global coordinates */
-    virtual void warp_cursor(int x, int y) = 0;
+    /**
+     * Move the cursor to a specific position.
+     * @param position the new position for the cursor, in global coordinates.
+     */
+    virtual void warp_cursor(wf::pointf_t position) = 0;
 
     /** no such coordinate will ever realistically be used for input */
     static constexpr double invalid_coordinate =
@@ -150,10 +155,19 @@ class compositor_core_t : public wf::object_base_t
      */
     virtual wf::surface_interface_t *get_touch_focus() = 0;
 
+    /**
+     * @return The surface under the given global coordinates, or null if none.
+     */
+    virtual wf::surface_interface_t *get_surface_at(wf::pointf_t point) = 0;
+
     /** @return The view whose surface is cursor focus */
     wayfire_view get_cursor_focus_view();
     /** @return The view whose surface is touch focus */
     wayfire_view get_touch_focus_view();
+    /**
+     * @return The view whose surface is under the given global coordinates,
+     *  or null if none */
+    wayfire_view get_view_at(wf::pointf_t point);
 
     /**
      * @return A list of all currently attached input devices.
@@ -172,6 +186,12 @@ class compositor_core_t : public wf::object_base_t
      * erase the view manually (instead it should just drop the keep_count)
      */
     virtual void add_view(std::unique_ptr<wf::view_interface_t> view) = 0;
+
+    /**
+     * @return A list of all views core manages, regardless of their output,
+     *  properties, etc.
+     */
+    virtual std::vector<wayfire_view> get_all_views() = 0;
 
     /**
      * Set the keyboard focus view. The stacking order on the view's output
@@ -229,11 +249,12 @@ class compositor_core_t : public wf::object_base_t
     std::string wayland_display;
 
     /**
-     * Return the xwayland display number.
+     * Return the xwayland display name.
      *
-     * This returns -1 if xwayland is not available
+     * @return The xwayland display name, or empty string if xwayland is not
+     *   available.
      */
-    virtual int get_xwayland_display() = 0;
+    virtual std::string get_xwayland_display() = 0;
 
     /**
      * Execute the given command in a bash shell.

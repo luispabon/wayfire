@@ -81,15 +81,10 @@ void wf::wlr_view_t::handle_minimize_hint(wf::surface_interface_t *relative_to,
     box.width = hint.width;
     box.height = hint.height;
 
-    this->minimize_hint = box;
+    set_minimize_hint(box);
 }
 
-wlr_box wf::wlr_view_t::get_minimize_hint()
-{
-    return this->minimize_hint;
-}
-
-void wf::wlr_view_t::subtract_opaque(wf::region_t& region, int x, int y)
+wf::region_t wf::wlr_view_t::get_transformed_opaque_region()
 {
     auto& maximal_shrink_constraint =
         wf::surface_interface_t::impl::active_shrink_constraint;
@@ -103,8 +98,9 @@ void wf::wlr_view_t::subtract_opaque(wf::region_t& region, int x, int y)
     if (this->fullscreen)
         maximal_shrink_constraint = 0;
 
-    wf::view_interface_t::subtract_opaque(region, x, y);
+    auto region = wf::view_interface_t::get_transformed_opaque_region();
     maximal_shrink_constraint = saved_shrink_constraint;
+    return region;
 }
 
 void wf::wlr_view_t::set_position(int x, int y,
@@ -190,6 +186,24 @@ void wf::wlr_view_t::update_size()
         view_impl->frame->notify_view_resized(get_wm_geometry());
 }
 
+bool wf::wlr_view_t::should_resize_client(
+    wf::dimensions_t request, wf::dimensions_t current_geometry)
+{
+    /*
+     * Do not send a configure if the client will retain its size.
+     * This is needed if a client starts with one size and immediately resizes
+     * again.
+     *
+     * If we do configure it with the given size, then it will think that we
+     * are requesting the given size, and won't resize itself again.
+     */
+    if (this->last_size_request == wf::dimensions_t{0, 0}) {
+        return request != current_geometry;
+    } else {
+        return request != last_size_request;
+    }
+}
+
 wf::geometry_t wf::wlr_view_t::get_output_geometry()
 {
     return geometry;
@@ -267,7 +281,10 @@ void wf::wlr_view_t::map(wlr_surface *surface)
     update_size();
 
     if (role == VIEW_ROLE_TOPLEVEL && !parent)
+    {
+        get_output()->workspace->add_view(self(), wf::LAYER_WORKSPACE);
         get_output()->focus_view(self(), true);
+    }
 
     damage();
     emit_view_map();

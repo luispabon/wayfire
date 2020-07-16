@@ -187,7 +187,7 @@ addr2line_result locate_source_file(const demangling_result& dr)
     };
 }
 
-void wf::print_trace()
+void wf::print_trace(bool fast_mode)
 {
     void* addrlist[MAX_FRAMES];
     int addrlen = backtrace(addrlist, MAX_FRAMES);
@@ -205,7 +205,7 @@ void wf::print_trace()
 
         std::ostringstream line;
         line << '#' << std::left << std::setw(2) << i << " ";
-        if (result.address.size() && result.executable.size() && HAS_ADDR2LINE) {
+        if (HAS_ADDR2LINE && !fast_mode && result.address.size() && result.executable.size()) {
             auto source = locate_source_file(result);
             line << source.function_name << " " << source.function_source;
         } else if (result.function_name.size()) {
@@ -221,4 +221,34 @@ void wf::print_trace()
     }
 
     free(symbollist);
+}
+
+/* ------------------- Impl of debugging functions ---------------------------*/
+#include <iomanip>
+std::ostream& operator << (std::ostream& out, const glm::mat4& mat)
+{
+    out << std::endl;
+    for (int i = 0; i < 4; i++)
+    {
+        for (int j = 0; j < 4; j++)
+        {
+            out << std::setw(10) << std::fixed << std::setprecision(5)
+                << mat[j][i] << std::setw(0) << ",";
+        }
+        out << std::endl;
+    }
+
+    return out;
+}
+
+wf::pointf_t operator * (const glm::mat4& m, const wf::pointf_t& p)
+{
+    glm::vec4 v = {p.x, p.y, 0.0, 1.0};
+    v = m * v;
+    return wf::pointf_t{v.x, v.y};
+}
+
+wf::pointf_t operator * (const glm::mat4& m, const wf::point_t& p)
+{
+    return m * wf::pointf_t{1.0 * p.x, 1.0 * p.y};
 }

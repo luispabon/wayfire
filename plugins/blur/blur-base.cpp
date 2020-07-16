@@ -1,5 +1,4 @@
 #include "blur.hpp"
-#include <wayfire/debug.hpp>
 #include <wayfire/output.hpp>
 #include <wayfire/workspace-manager.hpp>
 #include <wayfire/util/log.hpp>
@@ -47,7 +46,7 @@ wf_blur_base::wf_blur_base(wf::output_t *output,
     this->degrade_opt.load_option("blur/" + algorithm_name + "_degrade");
     this->iterations_opt.load_option("blur/" + algorithm_name + "_iterations");
 
-    this->options_changed = [=] () { damage_all_workspaces(); };
+    this->options_changed = [=] () { output->render->damage_whole(); };
     this->offset_opt.set_callback(options_changed);
     this->degrade_opt.set_callback(options_changed);
     this->iterations_opt.set_callback(options_changed);
@@ -73,21 +72,9 @@ int wf_blur_base::calculate_blur_radius()
     return offset_opt * degrade_opt * iterations_opt;
 }
 
-void wf_blur_base::damage_all_workspaces()
-{
-    auto wsize = output->workspace->get_workspace_grid_size();
-    for (int vx = 0; vx < wsize.width; vx++)
-    {
-        for (int vy = 0; vy < wsize.height; vy++)
-        {
-            output->render->damage(
-                output->render->get_ws_box({vx, vy}));
-        }
-    }
-}
-
-void wf_blur_base::render_iteration(wf::framebuffer_base_t& in,
-    wf::framebuffer_base_t& out, int width, int height)
+void wf_blur_base::render_iteration(wf::region_t blur_region,
+    wf::framebuffer_base_t& in, wf::framebuffer_base_t& out,
+    int width, int height)
 {
     /* Special case for small regions where we can't really blur, because we
      * simply have too few pixels */
@@ -98,17 +85,21 @@ void wf_blur_base::render_iteration(wf::framebuffer_base_t& in,
     out.bind();
 
     GL_CALL(glBindTexture(GL_TEXTURE_2D, in.tex));
-    GL_CALL(glDrawArrays(GL_TRIANGLE_FAN, 0, 4));
+    for (auto& b : blur_region)
+    {
+        out.scissor(wlr_box_from_pixman_box(b));
+        GL_CALL(glDrawArrays(GL_TRIANGLE_FAN, 0, 4));
+    }
 }
 
 wlr_box wf_blur_base::copy_region(wf::framebuffer_base_t& result,
     const wf::framebuffer_t& source, const wf::region_t& region)
 {
-    auto subbox = source.framebuffer_box_from_damage_box(
+    auto subbox = source.framebuffer_box_from_geometry_box(
         wlr_box_from_pixman_box(region.get_extents()));
 
-    auto source_box = source.framebuffer_box_from_geometry_box({
-        0, 0, source.geometry.width, source.geometry.height});
+    auto source_box =
+        source.framebuffer_box_from_geometry_box(source.geometry);
 
     /* Scaling down might cause issues like flickering or some discrepancies
      * between the source and final image.
@@ -141,7 +132,21 @@ void wf_blur_base::pre_render(wf::texture_t src_tex, wlr_box src_box,
     int scaled_width = std::max(1, damage_box.width / degrade);
     int scaled_height = std::max(1, damage_box.height / degrade);
 
-    int r = blur_fb0(scaled_width, scaled_height);
+    /* As an optimization, we create a region that blur can use
+     * to perform minimal rendering required to blur. We start
+     * by translating the input damage region */
+    wf::region_t blur_damage;
+    for (auto b : damage)
+    {
+        blur_damage |= target_fb.framebuffer_box_from_geometry_box(
+            wlr_box_from_pixman_box(b));
+    }
+
+    /* Scale and translate the region */
+    blur_damage += -wf::point_t{damage_box.x, damage_box.y};
+    blur_damage *= 1.0 / degrade;
+
+    int r = blur_fb0(blur_damage, scaled_width, scaled_height);
 
     /* Make sure the result is always fb[1], because that's what is used in render() */
     if (r != 0)
@@ -165,8 +170,7 @@ void wf_blur_base::pre_render(wf::texture_t src_tex, wlr_box src_box,
 
     /* we subtract target_fb's position to so that
      * view box is relative to framebuffer */
-    auto view_box = target_fb.framebuffer_box_from_geometry_box(
-        src_box + wf::point_t{-target_fb.geometry.x, -target_fb.geometry.y});
+    auto view_box = target_fb.framebuffer_box_from_geometry_box(src_box);
 
     OpenGL::render_begin();
     fb[1].allocate(view_box.width, view_box.height);
@@ -194,8 +198,6 @@ void wf_blur_base::render(wf::texture_t src_tex, wlr_box src_box,
 {
     wlr_box fb_geom = target_fb.framebuffer_box_from_geometry_box(target_fb.geometry);
     auto view_box = target_fb.framebuffer_box_from_geometry_box(src_box);
-    view_box.x -= fb_geom.x;
-    view_box.y -= fb_geom.y;
 
     OpenGL::render_begin(target_fb);
     blend_program.use(src_tex.type);
@@ -222,7 +224,7 @@ void wf_blur_base::render(wf::texture_t src_tex, wlr_box src_box,
     target_fb.bind();
     GL_CALL(glViewport(view_box.x, fb_geom.height - view_box.y - view_box.height,
             view_box.width, view_box.height));
-    target_fb.scissor(scissor_box);
+    target_fb.logic_scissor(scissor_box);
 
     GL_CALL(glDrawArrays(GL_TRIANGLE_FAN, 0, 4));
 

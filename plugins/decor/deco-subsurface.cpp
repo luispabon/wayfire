@@ -7,7 +7,6 @@
 #include <wayfire/output.hpp>
 #include <wayfire/opengl.hpp>
 #include <wayfire/core.hpp>
-#include <wayfire/debug.hpp>
 #include <wayfire/decorator.hpp>
 #include <wayfire/view-transform.hpp>
 #include <wayfire/signal-definitions.hpp>
@@ -54,6 +53,7 @@ class simple_decoration_surface : public wf::surface_interface_t,
             auto surface = theme.render_text(view->get_title(),
                 target_width, target_height);
             cairo_surface_upload_to_texture(surface, title_texture.tex);
+            cairo_surface_destroy(surface);
             title_texture.current_text = view->get_title();
         }
     }
@@ -73,7 +73,6 @@ class simple_decoration_surface : public wf::surface_interface_t,
 
   public:
     simple_decoration_surface(wayfire_view view) :
-        surface_interface_t(view.get()),
         theme{},
         layout{theme, [=] (wlr_box box) {this->damage_surface_box(box); }}
     {
@@ -128,7 +127,7 @@ class simple_decoration_surface : public wf::surface_interface_t,
         {
             if (item->get_type() == wf::decor::DECORATION_AREA_TITLE) {
                 OpenGL::render_begin(fb);
-                fb.scissor(scissor);
+                fb.logic_scissor(scissor);
                 render_title(fb, item->get_geometry() + origin);
                 OpenGL::render_end();
             } else { // button
@@ -142,15 +141,10 @@ class simple_decoration_surface : public wf::surface_interface_t,
         const wf::region_t& damage) override
     {
         wf::region_t frame = this->cached_region + wf::point_t{x, y};
-        frame *= fb.scale;
         frame &= damage;
 
         for (const auto& box : frame)
-        {
-            auto sbox = fb.framebuffer_box_from_damage_box(
-                wlr_box_from_pixman_box(box));
-            render_scissor_box(fb, {x, y}, sbox);
-        }
+            render_scissor_box(fb, {x, y}, wlr_box_from_pixman_box(box));
     }
 
     bool accepts_input(int32_t sx, int32_t sy) override
@@ -305,7 +299,10 @@ class simple_decoration_surface : public wf::surface_interface_t,
 
 void init_view(wayfire_view view)
 {
-    auto surf = new simple_decoration_surface(view);
-    view->set_decoration(surf);
+    auto surf = std::make_unique<simple_decoration_surface>(view);
+    nonstd::observer_ptr<simple_decoration_surface> ptr{surf};
+
+    view->add_subsurface(std::move(surf), true);
+    view->set_decoration(ptr.get());
     view->damage();
 }

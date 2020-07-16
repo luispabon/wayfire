@@ -114,7 +114,8 @@ class wf_blur_base
 
     /* renders the in texture to the out framebuffer.
      * assumes a properly bound and initialized GL program */
-    void render_iteration(wf::framebuffer_base_t& in, wf::framebuffer_base_t& out,
+    void render_iteration(wf::region_t blur_region,
+        wf::framebuffer_base_t& in, wf::framebuffer_base_t& out,
         int width, int height);
 
     /* copy the source pixels from region, storing into result
@@ -125,7 +126,7 @@ class wf_blur_base
     /* blur fb[0]
      * width and height are the scaled dimensions of the buffer
      * returns the index of the fb where the result is stored (0 or 1) */
-    virtual int blur_fb0(int width, int height) = 0;
+    virtual int blur_fb0(const wf::region_t& blur_region, int width, int height) = 0;
 
     public:
     wf_blur_base(wf::output_t *output,
@@ -133,7 +134,6 @@ class wf_blur_base
     virtual ~wf_blur_base();
 
     virtual int calculate_blur_radius();
-    void damage_all_workspaces();
 
     virtual void pre_render(wf::texture_t src_tex, wlr_box src_box,
         const wf::region_t& damage, const wf::framebuffer_t& target_fb);

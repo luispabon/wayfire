@@ -82,20 +82,30 @@ void input_manager::handle_new_input(wlr_input_device *dev)
         our_touch->add_device(dev);
     }
 
-    auto mapped_output_opt = wf::get_core().config.get_option(
-        nonull(dev->name) + std::string("/output"));
-    std::string mapped_output = mapped_output_opt ?
-        mapped_output_opt->get_value_str() : nonull(dev->output_name);
-
-    auto wo = wf::get_core().output_layout->find_output(mapped_output);
-    if (wo)
-        wlr_cursor_map_input_to_output(cursor->cursor, dev, wo->handle);
-
     update_capabilities();
 
     wf::input_device_signal data;
     data.device = nonstd::make_observer(input_devices.back().get());
     wf::get_core().emit_signal("input-device-added", &data);
+
+    refresh_device_mappings();
+}
+
+void input_manager::refresh_device_mappings()
+{
+    for (auto& device : this->input_devices)
+    {
+        wlr_input_device *dev = device->get_wlr_handle();
+
+        auto mapped_output_opt = wf::get_core().config.get_option(
+            nonull(dev->name) + std::string("/output"));
+        std::string mapped_output = mapped_output_opt ?
+            mapped_output_opt->get_value_str() : nonull(dev->output_name);
+
+        auto wo = wf::get_core().output_layout->find_output(mapped_output);
+        if (wo)
+            wlr_cursor_map_input_to_output(cursor->cursor, dev, wo->handle);
+    }
 }
 
 void input_manager::handle_input_destroyed(wlr_input_device *dev)
@@ -180,6 +190,8 @@ input_manager::input_manager()
         auto wo = (wf::output_impl_t*)get_signaled_output(data);
         if (exclusive_client != nullptr)
             wo->inhibit_plugins();
+
+        refresh_device_mappings();
     };
     wf::get_core().output_layout->connect_signal("output-added", &output_added);
 }

@@ -11,10 +11,7 @@ class subsurface_implementation_t : public wlr_child_surface_base_t
     wlr_subsurface *sub;
 
   public:
-    // set sub data
-    subsurface_implementation_t(wlr_subsurface *s,
-        surface_interface_t *parent);
-
+    subsurface_implementation_t(wlr_subsurface *s);
     virtual wf::point_t get_offset() override;
 };
 }

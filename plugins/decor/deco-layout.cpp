@@ -66,9 +66,7 @@ decoration_layout_t::decoration_layout_t(const decoration_theme_t& th,
     button_padding((titlebar_size - button_height) / 2),
     theme(th),
     damage_callback(callback)
-{
-    assert(titlebar_size >= border_size);
-}
+{ }
 
 wf::geometry_t decoration_layout_t::create_buttons(int width, int)
 {
@@ -112,23 +110,26 @@ wf::geometry_t decoration_layout_t::create_buttons(int width, int)
 void decoration_layout_t::resize(int width, int height)
 {
     this->layout_areas.clear();
-    auto button_geometry_expanded = create_buttons(width, height);
+    if (this->titlebar_size > 0)
+    {
+        auto button_geometry_expanded = create_buttons(width, height);
 
-    /* Padding around the button, allows move */
-    this->layout_areas.push_back(std::make_unique<decoration_area_t> (
-            DECORATION_AREA_MOVE, button_geometry_expanded));
+        /* Padding around the button, allows move */
+        this->layout_areas.push_back(std::make_unique<decoration_area_t> (
+                DECORATION_AREA_MOVE, button_geometry_expanded));
 
-    /* Titlebar dragging area (for move) */
-    wf::geometry_t title_geometry = {
-        border_size,
-        border_size,
-        /* Up to the button, but subtract the padding to the left of the title
-         * and the padding between title and button */
-        button_geometry_expanded.x - border_size,
-        titlebar_size,
-    };
-    this->layout_areas.push_back(std::make_unique<decoration_area_t>(
-            DECORATION_AREA_TITLE, title_geometry));
+        /* Titlebar dragging area (for move) */
+        wf::geometry_t title_geometry = {
+            border_size,
+            border_size,
+            /* Up to the button, but subtract the padding to the left of the
+             * title and the padding between title and button */
+            button_geometry_expanded.x - border_size,
+            titlebar_size,
+        };
+        this->layout_areas.push_back(std::make_unique<decoration_area_t>(
+                DECORATION_AREA_TITLE, title_geometry));
+    }
 
     /* Resizing edges - left */
     wf::geometry_t border_geometry = { 0, 0, border_size, height };

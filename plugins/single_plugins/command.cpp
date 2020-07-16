@@ -66,7 +66,11 @@ class wayfire_command : public wf::plugin_interface_t
         if (repeat.pressed_key || repeat.pressed_button)
             return false;
 
-        if (!output->activate_plugin(grab_interface, mode == BINDING_ALWAYS))
+        uint32_t act_flags = 0;
+        if (mode == BINDING_ALWAYS)
+            act_flags |= wf::PLUGIN_ACTIVATION_IGNORE_INHIBIT;
+
+        if (!output->activate_plugin(grab_interface, act_flags))
             return false;
 
         wf::get_core().run(command.c_str());

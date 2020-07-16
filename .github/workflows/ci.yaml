@@ -1,16 +1,6 @@
 name: CI
 
-# "run when at least one file does not match paths-ignore"
-on:
-  push:
-    paths-ignore:
-    - 'metadata/**'
-    - 'proto/**'
-  pull_request:
-    paths-ignore:
-    - 'metadata/**'
-    - 'proto/**'
-
+on: [push, pull_request]
 jobs:
   test_musl_gcc:
     name: "Test with GCC/musl/libstdc++/BFD on Alpine Linux"

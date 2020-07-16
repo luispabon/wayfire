@@ -10,6 +10,7 @@
 extern "C"
 {
 #include <wlr/types/wlr_foreign_toplevel_management_v1.h>
+struct wlr_xcursor_image;
 }
 
 // for emit_map_*()
@@ -33,13 +34,14 @@ struct view_transform_block_t : public noncopyable_t
 class view_interface_t::view_priv_impl
 {
   public:
-    wf::wl_idle_call idle_destruct;
     /**
      * A view is alive as long as it is possible for it to become mapped in the
      * future. For wlr views, this means that their role object hasn't been
      * destroyed and they still have the internal surface reference.
      */
     bool is_alive = true;
+    /** Reference count to the view */
+    int ref_cnt = 0;
 
     bool keyboard_focus_enabled = true;
 
@@ -56,6 +58,7 @@ class view_interface_t::view_priv_impl
     uint32_t edges = 0;
     int in_continuous_move = 0;
     int in_continuous_resize = 0;
+    int visibility_counter = 1;
 
     wf::safe_list_t<std::shared_ptr<view_transform_block_t>> transforms;
 
@@ -64,6 +67,8 @@ class view_interface_t::view_priv_impl
         wf::region_t cached_damage;
         bool valid() { return this->fb != (uint32_t)-1; }
     } offscreen_buffer;
+
+    wlr_box minimize_hint = { 0, 0, 0, 0 };
 };
 
 /**
@@ -93,11 +98,7 @@ class wlr_view_t :
 
     virtual std::string get_app_id() override final;
     virtual std::string get_title() override final;
-    virtual wlr_box get_minimize_hint() override final;
-
-    /* Subtract the opaque region of the surface from region, supposing
-     * the surface is positioned at (x, y) */
-    virtual void subtract_opaque(wf::region_t& region, int x, int y) override final;
+    virtual wf::region_t get_transformed_opaque_region() override;
 
     /* Functions which are further specialized for the different shells */
     virtual void move(int x, int y) override;
@@ -147,6 +148,11 @@ class wlr_view_t :
     /** Update the view size to the actual dimensions of its surface */
     virtual void update_size();
 
+    /** Last request to the client */
+    wf::dimensions_t last_size_request = {0, 0};
+    virtual bool should_resize_client(wf::dimensions_t request,
+        wf::dimensions_t current_size);
+
     virtual void commit() override;
     virtual void map(wlr_surface *surface) override;
     virtual void unmap() override;
@@ -168,8 +174,6 @@ class wlr_view_t :
         toplevel_handle_v1_minimize_request,
         toplevel_handle_v1_set_rectangle_request,
         toplevel_handle_v1_close_request;
-
-    wlr_box minimize_hint;
 
     /* Create/destroy the toplevel_handle */
     virtual void create_toplevel();
@@ -204,7 +208,8 @@ void init_xwayland();
 void init_layer_shell();
 
 void xwayland_set_seat(wlr_seat *seat);
-int xwayland_get_display();
+std::string xwayland_get_display();
+void xwayland_set_cursor(wlr_xcursor_image *image);
 
 void init_desktop_apis();
 }

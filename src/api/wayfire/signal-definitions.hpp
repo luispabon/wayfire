@@ -68,6 +68,14 @@ struct view_tiled_signal : public _view_signal
 };
 
 /**
+ * view-self-request-focus signal is emitted on the view's output whenever the client indicates the
+ * view should become active.
+ */
+struct view_self_request_focus_signal : public _view_signal
+{
+};
+
+/**
  * The view-fullscreen-request and view-fullscreen signals are emitted on the view's output when the view's fullscreen state changes.
  * view-fullscreen-request is emitted when the view needs to be fullscreened, but has not been fullscreened yet.
  * view-fullscreen is emitted whenever the view's fullscreen state actually changes.
@@ -94,11 +102,20 @@ struct view_minimize_request_signal : public _view_signal
     bool carried_out = false;
 };
 
+/* view-minimized: sent on view minimize state change
+ * In contrast to view_minimize_request_signal, this signal is sent after
+ * the minimized state has been finalized. */
+struct view_minimized_signal : public _view_signal
+{
+    bool state;
+};
+
 /* same as both change_viewport_request and change_viewport_notify */
 struct change_viewport_signal : public wf::signal_data_t
 {
     bool carried_out;
     wf::point_t old_viewport, new_viewport;
+    wf::output_t *output;
 };
 using change_viewport_notify = change_viewport_signal;
 
@@ -128,58 +145,114 @@ using output_removed_signal = _output_signal;
 
 namespace wf
 {
-    class input_device_t;
-    /* Used in the tablet-mode and lid-state signals from core */
-    struct switch_signal : public wf::signal_data_t
-    {
-        nonstd::observer_ptr<input_device_t> device;
-        bool state;
-    };
+/**
+ * output-configuration-changed is a signal emitted on an output whenever the
+ * output's source, mode, scale or transform changes.
+ */
+enum output_config_field_t
+{
+    /** Output source changed */
+    OUTPUT_SOURCE_CHANGE    = (1 << 0),
+    /** Output mode changed */
+    OUTPUT_MODE_CHANGE      = (1 << 1),
+    /** Output scale changed */
+    OUTPUT_SCALE_CHANGE     = (1 << 2),
+    /** Output transform changed */
+    OUTPUT_TRANSFORM_CHANGE = (1 << 3),
+    /** Output position changed */
+    OUTPUT_POSITION_CHANGE  = (1 << 4),
+};
 
-    /* in input-device-added and input-device-removed signals from core */
-    struct input_device_signal : public signal_data_t
-    {
-        nonstd::observer_ptr<input_device_t> device;
-    };
+struct output_state_t;
+struct output_configuration_changed_signal : public _output_signal
+{
+    output_configuration_changed_signal(const wf::output_state_t& st)
+        : state(st) { }
+    /**
+     * Which output attributes actually changed.
+     * A bitwise OR of output_config_field_t.
+     */
+    uint32_t changed_fields;
 
     /**
-     * Used for the following events:
-     *
-     * pointer_motion, pointer_motion_abs, pointer_button, pointer_axis,
-     * pointer_swipe_begin, pointer_swipe_update, pointer_swipe_end,
-     * pointer_pinch_begin, pointer_pinch_update, pointer_pinch_end,
-     *
-     * keyboard_key,
-     *
-     * touch_down, touch_up, touch_motion,
-     *
-     * tablet_proximity, tablet_axis, tablet_button, tablet_tip
-     *
-     * The template parameter is the corresponding type of wlr events.
-     *
-     * The input event signals are sent from core whenever a new input from an
-     * input device arrives. The events are sent before any processing is done,
-     * and they are independent of plugin input grabs and other wayfire input
-     * mechanisms.
-     *
-     * The event data can be modified by plugins, and then the modified event
-     * will be used instead. However plugins which modify the event must ensure
-     * that subsequent events are adjusted accordingly as well.
+     * The new state of the output.
      */
-    template<class wlr_event_t>
+    const wf::output_state_t& state;
+};
+
+class input_device_t;
+/* Used in the tablet-mode and lid-state signals from core */
+struct switch_signal : public wf::signal_data_t
+{
+    nonstd::observer_ptr<input_device_t> device;
+    bool state;
+};
+
+/* in input-device-added and input-device-removed signals from core */
+struct input_device_signal : public signal_data_t
+{
+    nonstd::observer_ptr<input_device_t> device;
+};
+
+/**
+ * Used for the following events:
+ *
+ * pointer_motion, pointer_motion_abs, pointer_button, pointer_axis,
+ * pointer_swipe_begin, pointer_swipe_update, pointer_swipe_end,
+ * pointer_pinch_begin, pointer_pinch_update, pointer_pinch_end,
+ *
+ * keyboard_key,
+ *
+ * touch_down, touch_up, touch_motion,
+ *
+ * tablet_proximity, tablet_axis, tablet_button, tablet_tip
+ *
+ * The template parameter is the corresponding type of wlr events.
+ *
+ * The input event signals are sent from core whenever a new input from an
+ * input device arrives. The events are sent before any processing is done,
+ * and they are independent of plugin input grabs and other wayfire input
+ * mechanisms.
+ *
+ * The event data can be modified by plugins, and then the modified event
+ * will be used instead. However plugins which modify the event must ensure
+ * that subsequent events are adjusted accordingly as well.
+ */
+template<class wlr_event_t>
     struct input_event_signal : public wf::signal_data_t
-    {
-        /* The event as it has arrived from wlroots */
-        wlr_event_t *event;
-    };
+{
+    /* The event as it has arrived from wlroots */
+    wlr_event_t *event;
+};
 
-    /**
-     * decoration-state-updated signal is emitted when the value of
-     * view::should_be_decorated() changes.
-     *
-     * decoration-state-updated-view is emitted on the output of the view.
-     */
-    using decoration_state_updated_signal = _view_signal;
+/**
+ * decoration-state-updated signal is emitted when the value of
+ * view::should_be_decorated() changes.
+ *
+ * decoration-state-updated-view is emitted on the output of the view.
+ */
+using decoration_state_updated_signal = _view_signal;
+
+/**
+ * view-move-to-output signal is emitted by core just before a view is moved
+ * from one output to another.
+ */
+struct view_move_to_output_signal : public signal_data_t
+{
+    /* The view being moved */
+    wayfire_view view;
+    /* The output the view was on */
+    wf::output_t *old_output;
+    /* The output the view is being moved to. */
+    wf::output_t *new_output;
+};
+
+/**
+ * stack-order-changed is emitted whenever the stacking order changes in the
+ * workspace-manager of an output.
+ */
+struct stack_order_changed_signal : public signal_data_t
+{ /* Empty */ };
 }
 
 #endif

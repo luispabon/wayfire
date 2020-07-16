@@ -9,7 +9,6 @@ extern "C"
 #include <wlr/types/wlr_idle.h>
 #include <wlr/types/wlr_idle_inhibit_v1.h>
 #include <wlr/types/wlr_input_inhibitor.h>
-#include <wlr/types/wlr_linux_dmabuf_v1.h>
 #include <wlr/types/wlr_export_dmabuf_v1.h>
 #include <wlr/types/wlr_server_decoration.h>
 #include <wlr/types/wlr_xdg_decoration_v1.h>
@@ -21,6 +20,8 @@ extern "C"
 #include <wlr/types/wlr_pointer_constraints_v1.h>
 #include <wlr/types/wlr_tablet_v2.h>
 #include <wlr/types/wlr_presentation_time.h>
+#include <wlr/types/wlr_gtk_primary_selection.h>
+#include <wlr/types/wlr_primary_selection_v1.h>
 
 #define static
 #include <wlr/render/wlr_renderer.h>
@@ -37,18 +38,20 @@ extern "C"
 #include <unistd.h>
 #include <fcntl.h>
 
+#include <wayfire/img.hpp>
+#include <wayfire/output.hpp>
 #include <wayfire/util/log.hpp>
+#include <wayfire/output-layout.hpp>
+#include <wayfire/workspace-manager.hpp>
+#include <wayfire/signal-definitions.hpp>
+
 #include "opengl-priv.hpp"
-#include "wayfire/output.hpp"
-#include "wayfire/workspace-manager.hpp"
 #include "seat/input-manager.hpp"
 #include "seat/touch.hpp"
 #include "../view/view-impl.hpp"
 #include "../output/wayfire-shell.hpp"
 #include "../output/output-impl.hpp"
 #include "../output/gtk-shell.hpp"
-#include "wayfire/img.hpp"
-#include "wayfire/output-layout.hpp"
 
 #include "core-impl.hpp"
 
@@ -165,8 +168,6 @@ struct wf_pointer_constraint
 
 void wf::compositor_core_impl_t::init()
 {
-    protocols.data_device = wlr_data_device_manager_create(display);
-    protocols.data_control = wlr_data_control_manager_v1_create(display);
     wlr_renderer_init_wl_display(renderer, display);
 
     /* Order here is important:
@@ -174,19 +175,26 @@ void wf::compositor_core_impl_t::init()
      *    since Xwayland initialization depends on the compositor
      * 2. input depends on output-layout
      * 3. weston toy clients expect xdg-shell before wl_seat, i.e
-     * init_desktop_apis() should come before input */
-    output_layout = std::make_unique<wf::output_layout_t> (backend);
+     * init_desktop_apis() should come before input.
+     * 4. GTK expects primary selection early. */
     compositor = wlr_compositor_create(display, renderer);
+
+    protocols.data_device = wlr_data_device_manager_create(display);
+    protocols.gtk_primary_selection =
+        wlr_gtk_primary_selection_device_manager_create(display);
+    protocols.primary_selection_v1 =
+        wlr_primary_selection_v1_device_manager_create(display);
+    protocols.data_control = wlr_data_control_manager_v1_create(display);
+
+    output_layout = std::make_unique<wf::output_layout_t> (backend);
     init_desktop_apis();
 
     /* Somehow GTK requires the tablet_v2 to be advertised pretty early */
     protocols.tablet_v2 = wlr_tablet_v2_create(display);
-
     input = std::make_unique<input_manager>();
 
     protocols.screencopy = wlr_screencopy_manager_v1_create(display);
     protocols.gamma_v1 = wlr_gamma_control_manager_v1_create(display);
-    protocols.linux_dmabuf = wlr_linux_dmabuf_v1_create(display, renderer);
     protocols.export_dmabuf = wlr_export_dmabuf_manager_v1_create(display);
     protocols.output_manager = wlr_xdg_output_manager_v1_create(display,
         output_layout->get_handle());
@@ -279,9 +287,9 @@ void wf::compositor_core_impl_t::hide_cursor()
     input->cursor->hide_cursor();
 }
 
-void wf::compositor_core_impl_t::warp_cursor(int x, int y)
+void wf::compositor_core_impl_t::warp_cursor(wf::pointf_t pos)
 {
-    input->cursor->warp_cursor({1.0 * x, 1.0 * y});
+    input->cursor->warp_cursor(pos);
 }
 
 wf::pointf_t wf::compositor_core_impl_t::get_cursor_position()
@@ -316,6 +324,24 @@ wayfire_view wf::compositor_core_t::get_cursor_focus_view()
     auto view = dynamic_cast<wf::view_interface_t*> (
         focus ? focus->get_main_surface() : nullptr);
 
+    return view ? view->self() : nullptr;
+}
+
+wf::surface_interface_t *wf::compositor_core_impl_t::get_surface_at(wf::pointf_t point)
+{
+    wf::pointf_t local = {0.0, 0.0};
+    return input->input_surface_at(point, local);
+}
+
+wayfire_view wf::compositor_core_t::get_view_at(wf::pointf_t point)
+{
+    auto surface = get_surface_at(point);
+    if (!surface)
+    {
+        return nullptr;
+    }
+
+    auto view = dynamic_cast<wf::view_interface_t*> (surface->get_main_surface());
     return view ? view->self() : nullptr;
 }
 
@@ -467,6 +493,15 @@ void wf::compositor_core_impl_t::add_view(
     v->initialize();
 }
 
+std::vector<wayfire_view> wf::compositor_core_impl_t::get_all_views()
+{
+    std::vector<wayfire_view> result;
+    for (auto& view : this->views)
+        result.push_back({view});
+
+    return result;
+}
+
 /* sets the "active" view and gives it keyboard focus
  *
  * It maintains two different classes of "active views"
@@ -485,16 +520,13 @@ void wf::compositor_core_impl_t::set_active_view(wayfire_view new_focus)
 
     /* Descend into frontmost child view */
     new_focus = new_focus ? new_focus->enumerate_views().front() : nullptr;
-    bool refocus = (input->keyboard_focus == new_focus);
+    bool refocus = (last_active_view == new_focus);
 
     /* don't deactivate view if the next focus is not a toplevel */
     if (new_focus == nullptr || new_focus->role == VIEW_ROLE_TOPLEVEL)
     {
-        if (input->keyboard_focus &&
-            input->keyboard_focus->is_mapped() && !refocus)
-        {
-            input->keyboard_focus->set_activated(false);
-        }
+        if (last_active_view && last_active_view->is_mapped() && !refocus)
+            last_active_view->set_activated(false);
 
         /* make sure to deactivate the last activated toplevel */
         if (last_active_toplevel && new_focus != last_active_toplevel)
@@ -505,20 +537,15 @@ void wf::compositor_core_impl_t::set_active_view(wayfire_view new_focus)
     if (new_focus)
     {
         input->set_keyboard_focus(new_focus, seat);
-
-        /* Check that the view was actually focused */
-        if (input->keyboard_focus == new_focus)
-            new_focus->set_activated(true);
+        new_focus->set_activated(true);
     } else
     {
         input->set_keyboard_focus(nullptr, seat);
     }
 
-    if (!input->keyboard_focus ||
-        input->keyboard_focus->role == VIEW_ROLE_TOPLEVEL)
-    {
+    last_active_view = new_focus;
+    if (!new_focus || new_focus->role == VIEW_ROLE_TOPLEVEL)
         last_active_toplevel = new_focus;
-    }
 }
 
 void wf::compositor_core_impl_t::focus_view(wayfire_view v)
@@ -542,6 +569,7 @@ void wf::compositor_core_impl_t::erase_view(wayfire_view v)
     auto it = std::find_if(views.begin(), views.end(),
         [&v] (const auto& view) { return view.get() == v.get(); });
 
+    v->deinitialize();
     views.erase(it);
 }
 
@@ -567,16 +595,15 @@ pid_t wf::compositor_core_impl_t::run(std::string command)
             setenv("_JAVA_AWT_WM_NONREPARENTING", "1", 1);
             setenv("WAYLAND_DISPLAY", wayland_display.c_str(), 1);
 #if WLR_HAS_XWAYLAND
-            if (xwayland_get_display() >= 0) {
-                auto xdisp = ":" + std::to_string(xwayland_get_display());
-                setenv("DISPLAY", xdisp.c_str(), 1);
+            if (!xwayland_get_display().empty()) {
+                setenv("DISPLAY", xwayland_get_display().c_str(), 1);
             }
 #endif
             int dev_null = open("/dev/null", O_WRONLY);
             dup2(dev_null, 1);
             dup2(dev_null, 2);
 
-            _exit(execl("/bin/bash", "/bin/bash", "-c", command.c_str(), NULL));
+            _exit(execl("/bin/sh", "/bin/sh", "-c", command.c_str(), NULL));
         } else
         {
             close(pipe_fd[READ_END]);
@@ -599,7 +626,7 @@ pid_t wf::compositor_core_impl_t::run(std::string command)
     }
 }
 
-int wf::compositor_core_impl_t::get_xwayland_display()
+std::string wf::compositor_core_impl_t::get_xwayland_display()
 {
     return xwayland_get_display();
 }
@@ -607,12 +634,16 @@ int wf::compositor_core_impl_t::get_xwayland_display()
 void wf::compositor_core_impl_t::move_view_to_output(wayfire_view v,
     wf::output_t *new_output)
 {
-    assert(new_output);
-    if (v->get_output())
-        v->get_output()->workspace->remove_view(v);
+    wf::view_move_to_output_signal data;
+    data.view = v;
+    data.old_output = v->get_output();
+    data.new_output = new_output;
+    this->emit_signal("view-move-to-output", &data);
 
+    assert(new_output);
     v->set_output(new_output);
-    new_output->workspace->add_view(v, wf::LAYER_WORKSPACE);
+    new_output->workspace->add_view(v,
+        v->minimized ? wf::LAYER_MINIMIZED : wf::LAYER_WORKSPACE);
     new_output->focus_view(v);
 }
 

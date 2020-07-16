@@ -2,12 +2,14 @@ wayfire_sources = ['main.cpp',
                    'util.cpp',
 
                    'core/output-layout.cpp',
+                   'core/matcher.cpp',
                    'core/object.cpp',
                    'core/opengl.cpp',
                    'core/plugin.cpp',
                    'core/core.cpp',
                    'core/img.cpp',
                    'core/wm.cpp',
+                   'core/view-access-interface.cpp',
 
                    'core/seat/pointing-device.cpp',
                    'core/seat/input-manager.cpp',
@@ -38,7 +40,7 @@ wayfire_sources = ['main.cpp',
 
 wayfire_dependencies = [wayland_server, wlroots, xkbcommon, libinput,
                        pixman, drm, egl, glesv2, glm, wf_protos,
-                       wfconfig, libinotify, backtrace]
+                       wfconfig, libinotify, backtrace, wfutils, xcb]
 
 if conf_data.get('BUILD_WITH_IMAGEIO')
     wayfire_dependencies += [jpeg, png]
@@ -90,10 +92,12 @@ install_headers(['api/wayfire/compositor-surface.hpp',
                  'api/wayfire/surface.hpp',
                  'api/wayfire/view-transform.hpp',
                  'api/wayfire/view.hpp',
+                 'api/wayfire/view-access-interface.hpp',
                  'api/wayfire/workspace-manager.hpp',
                  'api/wayfire/workspace-stream.hpp',
                  'api/wayfire/input-device.hpp',
-                 'api/wayfire/output-layout.hpp'],
+                 'api/wayfire/output-layout.hpp',
+                 'api/wayfire/matcher.hpp'],
                 subdir: 'wayfire')
 
 pkgconfig = import('pkgconfig')

@@ -31,7 +31,8 @@ server_protocols = [
     [wl_protocol_dir, 'unstable/tablet/tablet-unstable-v2.xml'],
     'wayfire-shell-unstable-v2.xml',
     'gtk-shell.xml',
-    'wlr-layer-shell-unstable-v1.xml'
+    'wlr-layer-shell-unstable-v1.xml',
+    'wlr-output-power-management-unstable-v1.xml'
 ]
 
 wl_protos_src = []

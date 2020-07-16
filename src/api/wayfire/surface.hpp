@@ -6,7 +6,9 @@
 #include <vector>
 #include <memory>
 
-#include "wayfire/geometry.hpp"
+#include <wayfire/nonstd/observer_ptr.h>
+#include <wayfire/geometry.hpp>
+
 extern "C"{
 struct wlr_surface;
 }
@@ -42,19 +44,6 @@ class surface_interface_t
     virtual ~surface_interface_t();
 
     /**
-     * Surface lifetime is managed by reference counting. To take a reference,
-     * use take_ref(). Note that one reference is automatically made when the
-     * surface is created.
-     */
-    void take_ref();
-
-    /**
-     * Drop a reference to the surface. When the reference count reaches 0, the
-     * destruct() method is called.
-     */
-    void unref();
-
-    /**
      * Check whether the surface is mapped. Mapped surfaces are "alive", i.e
      * they are rendered, can receive input, etc.
      *
@@ -67,11 +56,32 @@ class surface_interface_t
 
     /**
      * Related surfaces usually form hierarchies, where the topmost surface
-     * is a View, except for drag icons or surfaces managed by plugins.
+     * is a view, except for drag icons or surfaces managed by plugins.
      *
      * @return The topmost surface in the hierarchy of the surface.
      */
     virtual surface_interface_t *get_main_surface();
+
+    /**
+     * Add a new subsurface to the surface.
+     * This may potentially change the subsurface's output.
+     *
+     * @param subsurface The subsurface to add.
+     * @param is_below_parent If true, then the subsurface will be placed below
+     *  the view, otherwise, it will be on top of it.
+     */
+    void add_subsurface(std::unique_ptr<surface_interface_t> subsurface,
+        bool is_below_parent);
+
+    /**
+     * Remove the given subsurface from the surface tree.
+     * The subsurface and all of its subsurfaces will be destroyed.
+     *
+     * No-op if the subsurface does not exist.
+     *
+     * @param subsurface The subsurface to remove.
+     */
+    void remove_subsurface(nonstd::observer_ptr<surface_interface_t> subsurface);
 
     /**
      * @param surface_origin The coordinates of the top-left corner of the
@@ -125,16 +135,14 @@ class surface_interface_t
     virtual void send_frame_done(const timespec& frame_end);
 
     /**
-     * Subtract the opaque region of the surface from region.
+     * Get the opaque region of the surface relative to the given point.
      *
      * This is just a hint, so surface implementations don't have to implement
      * this function.
      *
-     * @param region The region to subtract from
-     * @param x The x position of the surface in the coordinate system of region
-     * @param y The y position of the surface in the coordinate system of region
+     * @param origin The coordinates of the upper-left corner of the surface.
      */
-    virtual void subtract_opaque(wf::region_t& region, int x, int y);
+    virtual wf::region_t get_opaque_region(wf::point_t origin);
 
     /**
      * Request that the opaque region is shrunk by a certain amount of pixels
@@ -162,11 +170,14 @@ class surface_interface_t
     /**
      * Render the surface, without applying any transformations.
      *
-     * @param fb The target framebuffer
-     * @param x The x coordinate of the surface relative to fb
-     * @param y The y coordinate of the surface relative to fb
-     * @param damage The damaged region of the surface. Nothing should be drawn
-     * outside of it.
+     * @param fb The target framebuffer.
+     * @param x The x coordinate of the surface in the same coordinate system
+     *   as the framebuffer's geometry.
+     * @param y The y coordinate of the surface the same coordinate system
+     *   as the framebuffer's geometry.
+     * @param damage The damaged region of the surface, in the same coordinate
+     *   system as the framebuffer's geometry. Nothing should be drawn outside
+     *   of the damaged region.
      */
     virtual void simple_render(const wf::framebuffer_t& fb, int x, int y,
         const wf::region_t& damage) = 0;
@@ -176,12 +187,8 @@ class surface_interface_t
     class impl;
     std::unique_ptr<impl> priv;
   protected:
-    /**
-     * Construct a new surface with the given parent surface.
-     *
-     * @param parent_surface The parent surface. May be null.
-     */
-    surface_interface_t(surface_interface_t* parent_surface);
+    /** Construct a new surface. */
+    surface_interface_t();
 
     /** @return the active shrink constraint */
     static int get_active_shrink_constraint();
@@ -190,13 +197,6 @@ class surface_interface_t
     virtual void damage_surface_box(const wlr_box& box);
     /** Damage the given region, in surface-local coordinates */
     virtual void damage_surface_region(const wf::region_t& region);
-
-    /**
-     * Called when the reference count reaches 0.
-     * It destructs the object and deletes it, so "this" may not be
-     * accessed after calling destruct().
-     */
-    virtual void destruct();
 
     /* Allow wlr surface implementation to access surface internals */
     friend class wlr_surface_base_t;

@@ -69,10 +69,10 @@ void plugin_manager::init_plugin(wayfire_plugin& p)
 
 void plugin_manager::destroy_plugin(wayfire_plugin& p)
 {
+    p->fini();
+
     p->grab_interface->ungrab();
     output->deactivate_plugin(p->grab_interface);
-
-    p->fini();
 
     auto handle = p->handle;
     p.reset();

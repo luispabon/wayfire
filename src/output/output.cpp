@@ -1,4 +1,3 @@
-#include "wayfire/debug.hpp"
 #include "output-impl.hpp"
 #include "wayfire/view.hpp"
 #include "../core/core-impl.hpp"
@@ -21,23 +20,26 @@ extern "C"
 #include <algorithm>
 #include <assert.h>
 
-wf::output_t::output_t(wlr_output *handle)
+wf::output_t::output_t() = default;
+
+wf::output_impl_t::output_impl_t(wlr_output *handle, const wf::dimensions_t& effective_size)
 {
+    this->set_effective_size(effective_size);
     this->handle = handle;
     workspace = std::make_unique<workspace_manager> (this);
     render = std::make_unique<render_manager> (this);
-}
 
-wf::output_impl_t::output_impl_t(wlr_output *handle)
-    : output_t(handle)
-{
-    plugin = std::make_unique<plugin_manager> (this);
     view_disappeared_cb = [=] (wf::signal_data_t *data) {
         output_t::refocus(get_signaled_view(data));
     };
 
     connect_signal("view-disappeared", &view_disappeared_cb);
     connect_signal("detach-view", &view_disappeared_cb);
+}
+
+void wf::output_impl_t::start_plugins()
+{
+    plugin = std::make_unique<plugin_manager> (this);
 }
 
 std::string wf::output_t::to_string() const
@@ -94,20 +96,22 @@ wf::output_t::~output_t()
 }
 wf::output_impl_t::~output_impl_t() { }
 
-wf::dimensions_t wf::output_t::get_screen_size() const
+void wf::output_impl_t::set_effective_size(const wf::dimensions_t& size)
 {
-    int w, h;
-    wlr_output_effective_resolution(handle, &w, &h);
-    return {w, h};
+    this->effective_size = size;
+}
+
+wf::dimensions_t wf::output_impl_t::get_screen_size() const
+{
+    return this->effective_size;
 }
 
 wf::geometry_t wf::output_t::get_relative_geometry() const
 {
-    wf::geometry_t g;
-    g.x = g.y = 0;
-    wlr_output_effective_resolution(handle, &g.width, &g.height);
-
-    return g;
+    auto size = get_screen_size();
+    return {
+        0, 0, size.width, size.height
+    };
 }
 
 wf::geometry_t wf::output_t::get_layout_geometry() const
@@ -132,11 +136,11 @@ void wf::output_t::ensure_pointer(bool center) const
     }
 
     auto lg = get_layout_geometry();
-    wf::point_t target = {
-        lg.x + lg.width / 2,
-        lg.y + lg.height / 2,
+    wf::pointf_t target = {
+        lg.x + lg.width / 2.0,
+        lg.y + lg.height / 2.0,
     };
-    wf::get_core().warp_cursor(target.x, target.y);
+    wf::get_core().warp_cursor(target);
     wf::get_core().set_cursor("default");
 }
 
@@ -167,17 +171,7 @@ bool wf::output_t::ensure_visible(wayfire_view v)
     int dvx = std::floor(1.0 * dx / g.width);
     int dvy = std::floor(1.0 * dy / g.height);
     auto cws = workspace->get_current_workspace();
-
-    change_viewport_signal data;
-
-    data.carried_out = false;
-    data.old_viewport = cws;
-    data.new_viewport = cws + wf::point_t{dvx, dvy};
-
-    emit_signal("set-workspace-request", &data);
-    if (!data.carried_out)
-        workspace->set_workspace(data.new_viewport);
-
+    workspace->request_workspace(cws + wf::point_t{dvx, dvy});
     return true;
 }
 
@@ -219,14 +213,35 @@ void wf::output_impl_t::update_active_view(wayfire_view v, uint32_t flags)
 
 void wf::output_impl_t::focus_view(wayfire_view v, uint32_t flags)
 {
+    const auto& make_view_visible = [this, flags] (wayfire_view view)
+    {
+        if (view->minimized)
+            view->minimize_request(false);
+
+        if (flags & FOCUS_VIEW_RAISE)
+            workspace->bring_to_front(view);
+    };
+
     if (v && workspace->get_view_layer(v) < wf::get_core().get_focused_layer())
     {
         auto active_view = get_active_view();
         if (active_view && active_view->get_app_id().find("$unfocus") == 0)
-            return focus_view(nullptr, false);
-
-        LOGD("Denying focus request for a view from a lower layer than the"
-            " focused layer");
+        {
+            /* This is the case where for ex. a panel has grabbed input focus,
+             * but user has clicked on another view so we want to dismiss the
+             * grab. We can't do that straight away because the client still
+             * holds the focus layer request.
+             *
+             * Instead, we want to deactive the $unfocus view, so that it can
+             * release the grab. At the same time, we bring the to-be-focused
+             * view on top, so that it gets the focus next. */
+            update_active_view(nullptr, flags);
+            make_view_visible(v);
+        } else
+        {
+            LOGD("Denying focus request for a view from a lower layer than the"
+                " focused layer");
+        }
         return;
     }
 
@@ -242,20 +257,13 @@ void wf::output_impl_t::focus_view(wayfire_view v, uint32_t flags)
     /* If no keyboard focus surface is set, then we don't want to focus the view */
     if (v->get_keyboard_focus_surface() || interactive_view_from_view(v.get()))
     {
-        /* We must make sure the view which gets focus is visible on the
-         * current workspace */
-        if (v->minimized)
-            v->minimize_request(false);
-
+        make_view_visible(v);
         update_active_view(v, flags);
-        if (flags & FOCUS_VIEW_RAISE)
-            workspace->bring_to_front(v);
 
         focus_view_signal data;
         data.view = v;
         emit_signal("focus-view", &data);
     }
-
 }
 
 void wf::output_impl_t::focus_view(wayfire_view v, bool raise)
@@ -280,16 +288,16 @@ wayfire_view wf::output_impl_t::get_active_view() const
 }
 
 bool wf::output_impl_t::can_activate_plugin(const plugin_grab_interface_uptr& owner,
-    bool ignore_inhibit)
+    uint32_t flags)
 {
     if (!owner)
         return false;
 
-    if (this->inhibited && !ignore_inhibit)
+    if (this->inhibited && !(flags & wf::PLUGIN_ACTIVATION_IGNORE_INHIBIT))
         return false;
 
     if (active_plugins.find(owner.get()) != active_plugins.end())
-        return true;
+        return flags & wf::PLUGIN_ACTIVATE_ALLOW_MULTIPLE;
 
     for(auto act_owner : active_plugins)
     {
@@ -303,9 +311,9 @@ bool wf::output_impl_t::can_activate_plugin(const plugin_grab_interface_uptr& ow
 }
 
 bool wf::output_impl_t::activate_plugin(const plugin_grab_interface_uptr& owner,
-    bool ignore_inhibit)
+    uint32_t flags)
 {
-    if (!can_activate_plugin(owner, ignore_inhibit))
+    if (!can_activate_plugin(owner, flags))
         return false;
 
     if (active_plugins.find(owner.get()) != active_plugins.end()) {

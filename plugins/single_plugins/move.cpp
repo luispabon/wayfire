@@ -7,7 +7,6 @@
 #include <wayfire/render-manager.hpp>
 #include <wayfire/compositor-view.hpp>
 #include <wayfire/output-layout.hpp>
-#include <wayfire/debug.hpp>
 
 #include <cmath>
 #include <linux/input.h>
@@ -16,6 +15,7 @@
 
 #include "snap_signal.hpp"
 #include "move-snap-helper.hpp"
+#include <wayfire/plugins/common/view-change-viewport-signal.hpp>
 
 class wf_move_mirror_view : public wf::mirror_view_t
 {
@@ -198,7 +198,11 @@ class wayfire_move : public wf::plugin_interface_t
             uint32_t view_layer = output->workspace->get_view_layer(view);
             /* Allow moving an on-screen keyboard while screen is locked */
             bool ignore_inhibit = view_layer == wf::LAYER_DESKTOP_WIDGET;
-            if (!output->activate_plugin(grab_interface, ignore_inhibit))
+            uint32_t act_flags = 0;
+            if (ignore_inhibit)
+                act_flags |= wf::PLUGIN_ACTIVATION_IGNORE_INHIBIT;
+
+            if (!output->activate_plugin(grab_interface, act_flags))
                 return false;
 
             if (!grab_interface->grab()) {
@@ -262,6 +266,12 @@ class wayfire_move : public wf::plugin_interface_t
                 /* Update slot, will hide the preview as well */
                 update_slot(0);
             }
+
+            view_change_viewport_signal workspace_may_changed;
+            workspace_may_changed.view = this->view;
+            workspace_may_changed.to = output->workspace->get_current_workspace();
+            workspace_may_changed.old_viewport_invalid = false;
+            output->emit_signal("view-change-viewport", &workspace_may_changed);
 
             this->view = nullptr;
         }

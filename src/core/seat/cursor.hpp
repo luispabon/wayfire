@@ -33,9 +33,10 @@ struct wf_cursor
     /* Move the cursor to the given point */
     void warp_cursor(wf::pointf_t point);
     wf::pointf_t get_cursor_position();
-    void init_xcursor();
 
+    void init_xcursor();
     void setup_listeners();
+    void load_xcursor_scale(float scale);
 
     wf::wl_listener_wrapper on_button, on_motion, on_motion_absolute, on_axis,
 

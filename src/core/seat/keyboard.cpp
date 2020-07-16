@@ -113,15 +113,20 @@ void input_manager::set_keyboard_focus(wayfire_view view, wlr_seat *seat)
     if (!active_grab)
     {
         auto kbd = wlr_seat_get_keyboard(seat);
-        wlr_seat_keyboard_notify_enter(seat, surface,
-            kbd ? kbd->keycodes : NULL,
-            kbd ? kbd->num_keycodes : 0,
-            kbd ? &kbd->modifiers : NULL);
+        if (surface)
+        {
+            wlr_seat_keyboard_notify_enter(seat, surface,
+                kbd ? kbd->keycodes : NULL,
+                kbd ? kbd->num_keycodes : 0,
+                kbd ? &kbd->modifiers : NULL);
+        } else {
+            wlr_seat_keyboard_notify_clear_focus(seat);
+        }
         keyboard_focus = view;
     }
     else
     {
-        wlr_seat_keyboard_notify_enter(seat, NULL, NULL, 0, NULL);
+        wlr_seat_keyboard_notify_clear_focus(seat);
         keyboard_focus = nullptr;
     }
 }

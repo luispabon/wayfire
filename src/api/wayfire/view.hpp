@@ -254,6 +254,13 @@ class view_interface_t : public surface_interface_t, public wf::object_base_t
     /** @return true if the view is visible */
     virtual bool is_visible();
 
+    /**
+     * Change the view visibility. Visibility requests are counted, i.e if the
+     * view is made invisible two times, it needs to be made visible two times
+     * before it is visible again.
+     */
+    virtual void set_visible(bool visible);
+
     /** Damage the whole view and add the damage to its output */
     virtual void damage();
 
@@ -270,6 +277,12 @@ class view_interface_t : public surface_interface_t, public wf::object_base_t
      */
     virtual wlr_box get_minimize_hint();
 
+    /**
+     * Sets the minimize target for this view, i.e when displaying a minimize
+     * animation, where the animation's target should be. 
+     * @param hint The new minimize target rectangle, in output-local coordinates.
+     */
+    virtual void set_minimize_hint(wlr_box hint);
     /** @return true if the view needs decorations */
     virtual bool should_be_decorated();
 
@@ -361,17 +374,10 @@ class view_interface_t : public surface_interface_t, public wf::object_base_t
     bool intersects_region(const wlr_box& region);
 
     /**
-     * Subtract the transformed opaque region of the view and its subsurfaces.
-     *
-     * @param region The region to subtract opaque from.
-     *   It has the output scale applied to it.
-     * @param x The X offset of the region coordinate system relative to the
-     *   output coordinate system.
-     * @param x The X offset of the region coordinate system relative to the
-     *   output coordinate system.
+     * Get the transformed opaque region of the view and its subsurfaces.
+     * The returned region is in output-local coordinates.
      */
-    virtual void subtract_transformed_opaque(
-        wf::region_t& region, int x, int y);
+    virtual wf::region_t get_transformed_opaque_region();
 
     /**
      * Render all the surfaces of the view using the view's transforms.
@@ -382,12 +388,13 @@ class view_interface_t : public surface_interface_t, public wf::object_base_t
      * Child views like dialogues are considered a part of the view's surface
      * tree, however they are not transformed by the view's transformers.
      *
-     * @param framebuffer the framebuffer to render to.
-     * @param damage the damaged region of the view, in the same (but scaled)
-     *        coordinate system as the framebuffer.
+     * @param framebuffer The framebuffer to render to. Geometry needs to be
+     *   in output-local coordinate system.
+     * @param damage The damaged region of the view, in output-local coordinate
+     *   system.
      *
      * @return true if the render operation was successful, and false if the
-                    view is both unmapped and has no snapshot.
+     *   view is both unmapped and has no snapshot.
      */
     bool render_transformed(const framebuffer_t& framebuffer,
         const region_t& damage);
@@ -398,6 +405,19 @@ class view_interface_t : public surface_interface_t, public wf::object_base_t
      * and continue displaying it afterwards.
      */
     virtual void take_snapshot();
+
+    /**
+     * View lifetime is managed by reference counting. To take a reference,
+     * use take_ref(). Note that one reference is automatically made when the
+     * view is created.
+     */
+    void take_ref();
+
+    /**
+     * Drop a reference to the surface. When the reference count reaches 0, the
+     * destruct() method is called.
+     */
+    void unref();
 
     virtual ~view_interface_t();
 
@@ -420,6 +440,16 @@ class view_interface_t : public surface_interface_t, public wf::object_base_t
      */
     virtual void initialize();
 
+    /**
+     * When a view is being destroyed, all associated objects like subsurfaces,
+     * transformers and custom data are destroyed.
+     *
+     * In general, we want to make sure that these associated objects are freed
+     * before the actual view object destruction starts. Thus, deinitialize()
+     * is called from core just before destroying the view.
+     */
+    virtual void deinitialize();
+
     /** get_offset() is not valid for views */
     virtual wf::point_t get_offset() override { return {0, 0}; }
 
@@ -432,7 +462,13 @@ class view_interface_t : public surface_interface_t, public wf::object_base_t
      */
     virtual wf::geometry_t get_untransformed_bounding_box();
 
-    virtual void destruct() override;
+
+    /**
+     * Called when the reference count reaches 0.
+     * It destructs the object and deletes it, so "this" may not be
+     * accessed after destruct() is called.
+     */
+    virtual void destruct();
 
     /**
      * Called whenever the minimized, tiled, fullscreened

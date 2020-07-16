@@ -3,7 +3,6 @@
 #include <wayfire/opengl.hpp>
 #include <wayfire/compositor-view.hpp>
 #include <wayfire/signal-definitions.hpp>
-#include <wayfire/debug.hpp>
 #include <cstring>
 
 #include <glm/gtc/matrix_transform.hpp>
@@ -86,10 +85,9 @@ void wf::mirror_view_t::simple_render(const wf::framebuffer_t& fb, int x, int y,
      * calculated for this mirror view, and needs to stay as it is */
     auto base_bbox = base_view->get_bounding_box();
 
-    copy.geometry.x += base_bbox.x - (x + fb.geometry.x);
-    copy.geometry.y += base_bbox.y - (y + fb.geometry.y);
-
-    base_view->render_transformed(copy, damage);
+    wf::point_t offset = {base_bbox.x - x, base_bbox.y - y};
+    copy.geometry = copy.geometry + offset;
+    base_view->render_transformed(copy, damage + offset);
     copy.reset();
 }
 
@@ -130,6 +128,7 @@ bool wf::mirror_view_t::should_be_decorated() { return false; }
 
 wf::color_rect_view_t::color_rect_view_t() : wf::view_interface_t()
 {
+    this->geometry = {0, 0, 1, 1};
     this->_color = {0, 0, 0, 1};
     this->border = 0;
     this->_is_mapped = true;
@@ -195,9 +194,7 @@ void wf::color_rect_view_t::simple_render(const wf::framebuffer_t& fb, int x, in
     OpenGL::render_begin(fb);
     for (const auto& box : damage)
     {
-        auto sbox =
-            fb.framebuffer_box_from_damage_box(wlr_box_from_pixman_box(box));
-        wlr_renderer_scissor(wf::get_core().renderer, &sbox);
+        fb.logic_scissor(wlr_box_from_pixman_box(box));
 
         /* Draw the border, making sure border parts don't overlap, otherwise
          * we will get wrong corners if border has alpha != 1.0 */

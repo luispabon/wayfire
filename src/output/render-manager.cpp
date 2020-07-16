@@ -6,7 +6,6 @@
 #include "wayfire/workspace-manager.hpp"
 #include "../core/seat/input-manager.hpp"
 #include "../core/opengl-priv.hpp"
-#include "wayfire/debug.hpp"
 #include "../main.hpp"
 #include <algorithm>
 #include <wayfire/nonstd/reverse.hpp>
@@ -50,32 +49,28 @@ struct output_damage_t
     }
 
     /**
-     * Damage the given box
-     */
-    void damage(const wlr_box& box)
-    {
-        frame_damage |= box;
-
-        auto sbox = box;
-        if (damage_manager)
-            wlr_output_damage_add_box(damage_manager, &sbox);
-
-        schedule_repaint();
-    }
-
-    /**
      * Damage the given region
      */
     void damage(const wf::region_t& region)
     {
-        frame_damage |= region;
-        if (damage_manager)
-        {
-            wlr_output_damage_add(damage_manager,
-                const_cast<wf::region_t&> (region).to_pixman());
-        }
+        if (region.empty() || !damage_manager)
+            return;
 
-        schedule_repaint();
+        /* Wlroots expects damage after scaling */
+        auto scaled_region = region * wo->handle->scale;
+        frame_damage |= scaled_region;
+        wlr_output_damage_add(damage_manager, scaled_region.to_pixman());
+    }
+
+    void damage(const wf::geometry_t& box)
+    {
+        if (box.width <= 0 || box.height <= 0 || !damage_manager)
+            return;
+
+        /* Wlroots expects damage after scaling */
+        auto scaled_box = box * wo->handle->scale;
+        frame_damage |= scaled_box;
+        wlr_output_damage_add_box(damage_manager, &scaled_box);
     }
 
     /**
@@ -83,20 +78,23 @@ struct output_damage_t
      * whether there is any damage and makes sure frame_damage contains all the
      * damage needed for repainting the next frame.
      */
-    bool make_current(bool& need_swap)
+    bool make_current(bool& needs_swap)
     {
         if (!damage_manager)
             return false;
 
         wf::region_t tmp_region;
-        auto r = wlr_output_damage_attach_render(damage_manager, &need_swap,
+        auto r = wlr_output_damage_attach_render(damage_manager, &needs_swap,
             tmp_region.to_pixman());
 
         if (!r) return false;
 
         frame_damage |= tmp_region;
         if (runtime_config.no_damage_track)
-            frame_damage |= get_damage_box();
+            frame_damage |= get_wlr_damage_box();
+
+        needs_swap |= force_next_frame;
+        force_next_frame = false;
 
         return true;
     }
@@ -107,7 +105,10 @@ struct output_damage_t
      */
     wf::region_t get_scheduled_damage()
     {
-        return frame_damage;
+        if (!damage_manager)
+            return {};
+
+        return frame_damage * (1.0 / wo->handle->scale);
     }
 
     /**
@@ -133,25 +134,21 @@ struct output_damage_t
         frame_damage.clear();
     }
 
+    bool force_next_frame = false;
     /**
      * Schedule a frame for the output
      */
-    wf::wl_idle_call idle_redraw;
     void schedule_repaint()
     {
         wlr_output_schedule_frame(output);
-        if (!idle_redraw.is_connected())
-        {
-            idle_redraw.run_once([&] () {
-                wlr_output_schedule_frame(output);
-            });
-        }
+        force_next_frame = true;
     }
 
     /**
-     * Return the extents of the visible region for the output.
+     * Return the extents of the visible region for the output in the wlroots
+     * damage coordinate system.
      */
-    wlr_box get_damage_box() const
+    wlr_box get_wlr_damage_box() const
     {
         int w, h;
         wlr_output_transformed_resolution(output, &w, &h);
@@ -165,7 +162,7 @@ struct output_damage_t
     {
         auto current = wo->workspace->get_current_workspace();
 
-        wlr_box box = get_damage_box();
+        wlr_box box = wo->get_relative_geometry();
         box.x = (ws.x - current.x) * box.width;
         box.y = (ws.y - current.y) * box.height;
 
@@ -173,13 +170,13 @@ struct output_damage_t
     }
 
     /**
-     * Returns the scheduled damage for the given workspace, in coordinates
-     * relative to the workspace itself
+     * Returns the scheduled damage for the given workspace, in output-local
+     * coordinates.
      */
     wf::region_t get_ws_damage(wf::point_t ws)
     {
-        auto ws_box = get_ws_box(ws);
-        return (frame_damage & ws_box) + wf::point_t{-ws_box.x, -ws_box.y};
+        auto scaled = frame_damage * (1.0 / wo->handle->scale);
+        return scaled & get_ws_box(ws);
     }
 
     /**
@@ -189,10 +186,14 @@ struct output_damage_t
     {
         auto vsize = wo->workspace->get_workspace_grid_size();
         auto vp = wo->workspace->get_current_workspace();
+        auto res = wo->get_screen_size();
 
-        int sw, sh;
-        wlr_output_transformed_resolution(output, &sw, &sh);
-        damage({-vp.x * sw, -vp.y * sh, vsize.width * sw, vsize.height * sh});
+        damage(wf::geometry_t{
+            -vp.x * res.width,
+            -vp.y * res.height,
+            vsize.width * res.width,
+            vsize.height * res.height,
+        });
     }
 
     wf::wl_idle_call idle_damage;
@@ -348,8 +349,6 @@ class wf::render_manager::impl
         : output(o)
     {
         output_damage = std::make_unique<output_damage_t> (o);
-        output_damage->damage(output_damage->get_damage_box());
-
         effects = std::make_unique<effect_hook_manager_t> ();
         postprocessing = std::make_unique<postprocessing_manager_t>(o);
 
@@ -490,7 +489,7 @@ class wf::render_manager::impl
         {
             /* Clear the screen to yellow, so that the repainted parts are
              * visible */
-            swap_damage |= output_damage->get_damage_box();
+            swap_damage |= output_damage->get_wlr_damage_box();
 
             OpenGL::render_begin(output->handle->width, output->handle->height, 0);
             OpenGL::clear({1, 1, 0, 1});
@@ -531,11 +530,12 @@ class wf::render_manager::impl
         {
             renderer(get_target_framebuffer());
             /* TODO: let custom renderers specify what they want to repaint... */
-            swap_damage |= output_damage->get_damage_box();
+            swap_damage |= output_damage->get_wlr_damage_box();
         } else
         {
-            swap_damage = output_damage->get_scheduled_damage();
-            swap_damage &= output_damage->get_damage_box();
+            swap_damage =
+                output_damage->get_scheduled_damage() * output->handle->scale;
+            swap_damage &= output_damage->get_wlr_damage_box();
             default_renderer();
         }
     }
@@ -580,7 +580,7 @@ class wf::render_manager::impl
         effects->run_effects(OUTPUT_EFFECT_OVERLAY);
 
         if (postprocessing->post_effects.size())
-            swap_damage |= output_damage->get_damage_box();
+            swap_damage |= output_damage->get_wlr_damage_box();
 
         OpenGL::render_begin(get_target_framebuffer());
         wlr_output_render_software_cursors(output->handle, swap_damage.to_pixman());
@@ -677,7 +677,7 @@ class wf::render_manager::impl
         wf::surface_interface_t *surface = nullptr;
         wf::view_interface_t *view = nullptr;
 
-        /* For views, this is the coordinates the framebuffer should have.
+        /* For views, this is the delta in framebuffer coordinates.
          * For surfaces, this is the coordinates of the surface inside the
          * framebuffer */
         wf::point_t pos;
@@ -703,24 +703,21 @@ class wf::render_manager::impl
      * Calculate the damaged region of a view which renders with its snapshot
      * and add it to the render list
      *
-     * @param view_delta The offset of the view so that it has workspace-local
-     * coordinates
+     * @param view_delta The offset of the view so that it is on the workspace.
      */
     void schedule_snapshotted_view(workspace_stream_repaint_t& repaint,
         wayfire_view view, wf::point_t view_delta)
     {
         auto ds = damaged_surface(new damaged_surface_t);
 
-        auto bbox = view->get_bounding_box() + (-view_delta);
-        bbox = repaint.fb.damage_box_from_geometry_box(bbox);
-
-        ds->damage = repaint.ws_damage & bbox;
+        auto bbox = view->get_bounding_box() + view_delta;
+        ds->damage = (repaint.ws_damage & bbox) + -view_delta;
         if (!ds->damage.empty())
         {
-            ds->pos = view_delta;
+            ds->pos = -view_delta;
             ds->view = view.get();
-            view->subtract_transformed_opaque(repaint.ws_damage,
-                view_delta.x, view_delta.y);
+            repaint.ws_damage ^=
+                view->get_transformed_opaque_region() + view_delta;
             repaint.to_render.push_back(std::move(ds));
         }
     }
@@ -739,14 +736,12 @@ class wf::render_manager::impl
             return;
 
         auto ds = damaged_surface(new damaged_surface_t);
-
         wlr_box obox = {
             .x = pos.x,
             .y = pos.y,
             .width = surface->get_size().width,
             .height = surface->get_size().height
         };
-        obox = repaint.fb.damage_box_from_geometry_box(obox);
 
         ds->damage = repaint.ws_damage & obox;
         if (!ds->damage.empty())
@@ -756,7 +751,7 @@ class wf::render_manager::impl
 
             /* Subtract opaque region from workspace damage. The views below
              * won't be visible, so no need to damage them */
-            ds->surface->subtract_opaque(repaint.ws_damage, pos.x, pos.y);
+            repaint.ws_damage ^= ds->surface->get_opaque_region(pos);
             repaint.to_render.push_back(std::move(ds));
         }
     }
@@ -803,7 +798,6 @@ class wf::render_manager::impl
             wf::VISIBLE_LAYERS, false);
 
         schedule_drag_icon(repaint);
-
         for (auto& v : views)
         {
             for (auto& view : v->enumerate_views(false))
@@ -812,7 +806,7 @@ class wf::render_manager::impl
                 if (!view->is_visible() || repaint.ws_damage.empty())
                     continue;
 
-                if (view->role != VIEW_ROLE_DESKTOP_ENVIRONMENT)
+                if (view->role == VIEW_ROLE_DESKTOP_ENVIRONMENT)
                     view_delta = {repaint.ws_dx, repaint.ws_dy};
 
                 /* We use the snapshot of a view on either of the following
@@ -832,10 +826,7 @@ class wf::render_manager::impl
                 {
                     /* Make sure view position is relative to the workspace
                      * being rendered */
-                    auto obox = view->get_output_geometry();
-                    obox.x -= view_delta.x;
-                    obox.y -= view_delta.y;
-
+                    auto obox = view->get_output_geometry() +  view_delta;
                     for (auto& child : view->enumerate_surfaces({obox.x, obox.y}))
                         schedule_surface(repaint, child.surface, child.position);
                 }
@@ -882,6 +873,8 @@ class wf::render_manager::impl
         repaint.ws_dx = (stream.ws.x - cws.x) * g.width,
         repaint.ws_dy = (stream.ws.y - cws.y) * g.height;
 
+        repaint.fb.geometry.x = repaint.ws_dx;
+        repaint.fb.geometry.y = repaint.ws_dy;
         return repaint;
     }
 
@@ -890,14 +883,20 @@ class wf::render_manager::impl
         OpenGL::render_begin(repaint.fb);
         for (const auto& rect : repaint.ws_damage)
         {
-            wlr_box damage = wlr_box_from_pixman_box(rect);
-            repaint.fb.scissor(
-                repaint.fb.framebuffer_box_from_damage_box(damage));
-
-            OpenGL::clear(color,
-                GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            repaint.fb.logic_scissor(wlr_box_from_pixman_box(rect));
+            OpenGL::clear(color, GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         }
         OpenGL::render_end();
+    }
+
+    void send_sampled_on_output(wf::surface_interface_t *surface)
+    {
+        if (surface->get_wlr_surface() != nullptr)
+        {
+            wlr_presentation_surface_sampled_on_output(
+                wf::get_core_impl().protocols.presentation,
+                surface->get_wlr_surface(), output->handle);
+        }
     }
 
     void render_views(workspace_stream_repaint_t& repaint)
@@ -906,41 +905,24 @@ class wf::render_manager::impl
 
         for (auto& ds : wf::reverse(repaint.to_render))
         {
-            wlr_surface *sampled_surf = nullptr;
-
             if (ds->view)
             {
-                repaint.fb.geometry.x = ds->pos.x;
-                repaint.fb.geometry.y = ds->pos.y;
+                repaint.fb.geometry = fb_geometry + ds->pos;
                 ds->view->render_transformed(repaint.fb, ds->damage);
-                sampled_surf = ds->view->get_wlr_surface();
                 for (auto& child : ds->view->enumerate_surfaces({0, 0}))
-                {
-                    if (child.surface->get_wlr_surface() != nullptr)
-                    {
-                        wlr_presentation_surface_sampled_on_output(
-                            wf::get_core_impl().protocols.presentation,
-                            child.surface->get_wlr_surface(),
-                            output->handle);
-                    }
-                }
+                    send_sampled_on_output(child.surface);
             }
             else
             {
                 repaint.fb.geometry = fb_geometry;
                 ds->surface->simple_render(repaint.fb,
                     ds->pos.x, ds->pos.y, ds->damage);
-                sampled_surf = ds->surface->get_wlr_surface();
-            }
-
-            if (sampled_surf != nullptr)
-            {
-                wlr_presentation_surface_sampled_on_output(
-                    wf::get_core_impl().protocols.presentation,
-                    sampled_surf,
-                    output->handle);
+                send_sampled_on_output(ds->surface);
             }
         }
+
+        /* Restore proper geometry */
+        repaint.fb.geometry = fb_geometry;
     }
 
     void workspace_stream_update(workspace_stream_t& stream,
@@ -998,7 +980,6 @@ void render_manager::damage_whole() { pimpl->output_damage->damage_whole(); }
 void render_manager::damage_whole_idle() { pimpl->output_damage->damage_whole_idle(); }
 void render_manager::damage(const wlr_box& box) { pimpl->output_damage->damage(box); }
 void render_manager::damage(const wf::region_t& region) { pimpl->output_damage->damage(region); }
-wlr_box render_manager::get_damage_box() const { return pimpl->output_damage->get_damage_box(); }
 wlr_box render_manager::get_ws_box(wf::point_t ws) const { return pimpl->output_damage->get_ws_box(ws); }
 wf::framebuffer_t render_manager::get_target_framebuffer() const { return pimpl->get_target_framebuffer(); }
 void render_manager::workspace_stream_start(workspace_stream_t& stream) { pimpl->workspace_stream_start(stream); }

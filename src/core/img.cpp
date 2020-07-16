@@ -2,6 +2,8 @@
 #include "wayfire/img.hpp"
 #include "wayfire/opengl.hpp"
 
+#include <config.h>
+
 #ifdef BUILD_WITH_IMAGEIO
 #include <png.h>
 #include <jpeglib.h>

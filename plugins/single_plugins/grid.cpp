@@ -1,5 +1,4 @@
 #include <wayfire/plugin.hpp>
-#include <wayfire/debug.hpp>
 #include <wayfire/output.hpp>
 #include <wayfire/core.hpp>
 #include <wayfire/view.hpp>
@@ -47,7 +46,8 @@ class wayfire_grid_view_cdata : public wf::custom_data_t
         this->output = view->get_output();
         this->animation = wf::geometry_animation_t{animation_duration};
 
-        if (!view->get_output()->activate_plugin(iface))
+        if (!view->get_output()->activate_plugin(iface,
+                wf::PLUGIN_ACTIVATE_ALLOW_MULTIPLE))
         {
             is_active = false;
             return;
@@ -116,9 +116,9 @@ class wayfire_grid_view_cdata : public wf::custom_data_t
 
     void set_end_state(wf::geometry_t geometry, int32_t edges)
     {
-        view->set_geometry(geometry);
         if (edges >= 0)
             view->set_tiled(edges);
+        view->set_geometry(geometry);
     }
 
     void adjust_geometry()

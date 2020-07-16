@@ -92,7 +92,7 @@ class FireTransformer : public wf::view_transformer_t
         wlr_box scissor_box, const wf::framebuffer_t& target_fb) override
     {
         OpenGL::render_begin(target_fb);
-        target_fb.scissor(scissor_box);
+        target_fb.logic_scissor(scissor_box);
 
         // render view
         float x = src_box.x, y = src_box.y, w = src_box.width, h = src_box.height;
@@ -127,7 +127,7 @@ void FireAnimation::init(wayfire_view view, int dur, wf_animation_type type)
 
     int msec = dur * fire_duration_mod_for_height(
         view->get_bounding_box().height);
-    this->progression = wf::animation::simple_animation_t(wf::create_option<int>(msec));
+    this->progression = wf::animation::simple_animation_t(wf::create_option<int>(msec), wf::animation::smoothing::linear);
     this->progression.animate(0, 1);
 
     if (type & HIDING_ANIMATION)

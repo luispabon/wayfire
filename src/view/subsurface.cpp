@@ -1,9 +1,8 @@
 #include "subsurface.hpp"
 #include <cassert>
 
-wf::subsurface_implementation_t::subsurface_implementation_t(wlr_subsurface *_sub,
-    wf::surface_interface_t *parent)
-    : wlr_child_surface_base_t(parent, this)
+wf::subsurface_implementation_t::
+subsurface_implementation_t(wlr_subsurface *_sub) : wlr_child_surface_base_t(this)
 {
     this->sub = _sub;
     on_map.set_callback([&] (void*) {
@@ -14,7 +13,8 @@ wf::subsurface_implementation_t::subsurface_implementation_t(wlr_subsurface *_su
         on_map.disconnect();
         on_unmap.disconnect();
         on_destroy.disconnect();
-        unref();
+
+        this->priv->parent_surface->remove_subsurface(this);
     });
 
     on_map.connect(&sub->events.map);

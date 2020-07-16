@@ -95,26 +95,29 @@ struct framebuffer_t : public framebuffer_base_t
 
     /* The functions below to convert between coordinate systems don't need a
      * bound OpenGL context */
-    /* Get the box after applying the framebuffer scale */
-    wlr_box damage_box_from_geometry_box(wlr_box box) const;
 
-    /* Get the projection of the given box onto the framebuffer.
-     * The given box is in output-local coordinates, i.e the same coordinate
-     * space as views */
+    /**
+     * Get the geometry of the given box after projecting it onto the framebuffer.
+     *
+     * The resulting geometry is affected by the framebuffer geometry, scale and
+     * transform.
+     */
     wlr_box framebuffer_box_from_geometry_box(wlr_box box) const;
-
-    /* Get the projection of the given box onto the framebuffer.
-     * The given box is in damage coordinates, e.g relative to the output's
-     * framebuffer before rotation */
-    wlr_box framebuffer_box_from_damage_box(wlr_box box) const;
-
-    /* Returns a region in damage coordinate system which corresponds to the
-     * whole area of the framebuffer */
-    wf::region_t get_damage_region() const;
 
     /* Returns a matrix which contains an orthographic projection from "geometry"
      * coordinates to the framebuffer coordinates. */
     glm::mat4 get_orthographic_projection() const;
+
+    /**
+     * Set the scissor region to the given box.
+     *
+     * In contrast to wf::framebuffer_base_t, this method takes its argument
+     * as a box with "logical" coordinates, not raw framebuffer coordinates.
+     *
+     * @param box The scissor box, in the same coordinate system as the
+     *   framebuffer's geometry.
+     */
+    void logic_scissor(wlr_box box) const;
 };
 }
 
@@ -226,8 +229,8 @@ void render_transformed_texture(wf::texture_t texture,
  * @param texture   The texture to render.
  * @param fb        The framebuffer to render onto.
  *                  It should have been already bound.
- * @param geometry  The geometry of the quad to render,
- *                    relative to the framebuffer.
+ * @param geometry  The geometry of the quad to render, in the same coordinate
+ *                    system as the framebuffer geometry.
  * @param color     A color multiplier for each channel of the texture.
  * @param bits      A bitwise OR of texture_rendering_flags_t. In this variant,
  *                    TEX_GEOMETRY flag is ignored.

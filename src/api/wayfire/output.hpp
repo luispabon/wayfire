@@ -27,6 +27,26 @@ class workspace_manager;
 struct plugin_grab_interface_t;
 using plugin_grab_interface_uptr = std::unique_ptr<plugin_grab_interface_t>;
 
+/**
+ * Flags which can be passed to wf::output_t::activate_plugin() and
+ * wf::output_t::can_activate_plugin().
+ */
+enum plugin_activation_flags_t
+{
+    /**
+     * Activate the plugin even if input is inhibited, for ex. even when a
+     * lockscreen is active.
+     */
+    PLUGIN_ACTIVATION_IGNORE_INHIBIT = (1 << 0),
+
+    /*
+     * Allow the same plugin to be activated multiple times.
+     * The plugin will also have to be deactivated as many times as it has been
+     * activated.
+     */
+    PLUGIN_ACTIVATE_ALLOW_MULTIPLE = (1 << 1),
+};
+
 class output_t : public wf::object_base_t
 {
   public:
@@ -55,7 +75,7 @@ class output_t : public wf::object_base_t
      * 3860x2160, scale 2 and transform 90, then get_screen_size will report
      * that it has logical resolution of 1080x1920
      */
-    wf::dimensions_t get_screen_size() const;
+    virtual wf::dimensions_t get_screen_size() const = 0;
 
     /**
      * Same as get_screen_size() but returns a wf::geometry_t with x,y = 0
@@ -85,23 +105,24 @@ class output_t : public wf::object_base_t
      * Checks if a plugin can activate. This may not succeed if a plugin
      * with the same abilities is already active or if input is inhibited.
      *
+     * @param flags A bitwise OR of plugin_activation_flags_t.
+     *
      * @return true if the plugin is able to be activated, false otherwise.
      */
     virtual bool can_activate_plugin(const plugin_grab_interface_uptr& owner,
-        bool ignore_input_inhibit = false) = 0;
+        uint32_t flags = 0) = 0;
 
     /**
      * Activates a plugin. Note that this may not succeed, if a plugin with the
      * same abilities is already active. However the same plugin might be
      * activated twice.
      *
-     * @param ignore_input_inhibit If set to true, plugin activation will be
-     * allowed even if a lockscreen is active.
+     * @param flags A bitwise OR of plugin_activation_flags_t.
      *
      * @return true if the plugin was successfully activated, false otherwise.
      */
     virtual bool activate_plugin(const plugin_grab_interface_uptr& owner,
-        bool ignore_input_inhibit = false) = 0;
+        uint32_t flags = 0) = 0;
 
     /**
      * Deactivates a plugin once, i.e if the plugin was activated more than
@@ -193,7 +214,7 @@ class output_t : public wf::object_base_t
     virtual ~output_t();
   protected:
     /* outputs are instantiated internally by core */
-    output_t(wlr_output *handle);
+    output_t();
 };
 }
 #endif /* end of include guard: OUTPUT_HPP */

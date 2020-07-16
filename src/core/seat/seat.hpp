@@ -27,7 +27,7 @@ struct wf_drag_icon : public wf::wlr_child_surface_base_t
 
 class wf_input_device_internal : public wf::input_device_t
 {
-    public:
+  public:
     wf_input_device_internal(wlr_input_device* dev);
     virtual ~wf_input_device_internal() = default;
 

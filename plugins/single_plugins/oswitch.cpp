@@ -11,9 +11,6 @@ class wayfire_output_manager : public wf::plugin_interface_t
 
     wf::activator_callback switch_output = [=] (wf::activator_source_t, uint32_t)
     {
-        if (!output->activate_plugin(grab_interface))
-            return false;
-
         /* when we switch the output, the oswitch keybinding
          * may be activated for the next output, which we don't want,
          * so we postpone the switch */
@@ -28,9 +25,6 @@ class wayfire_output_manager : public wf::plugin_interface_t
 
     wf::activator_callback switch_output_with_window = [=] (wf::activator_source_t, uint32_t)
     {
-        if (!output->can_activate_plugin(grab_interface))
-            return false;
-
         auto next =
             wf::get_core().output_layout->get_next_output(output);
         auto view = output->get_active_view();

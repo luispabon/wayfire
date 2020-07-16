@@ -1,8 +1,6 @@
 #include "cubemap.hpp"
 
 #include <glm/gtc/matrix_transform.hpp>
-
-#include <wayfire/debug.hpp>
 #include <config.h>
 #include <wayfire/core.hpp>
 #include <wayfire/img.hpp>
@@ -82,6 +80,7 @@ void wf_cube_background_cubemap::render_frame(const wf::framebuffer_t& fb,
     {
         GL_CALL(glClearColor(TEX_ERROR_FLAG_COLOR));
         GL_CALL(glClear(GL_COLOR_BUFFER_BIT));
+        OpenGL::render_end();
         return;
     }
     program.use(wf::TEXTURE_TYPE_RGBA);

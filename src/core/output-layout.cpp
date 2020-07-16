@@ -5,7 +5,11 @@
 #include "wayfire/render-manager.hpp"
 #include "wayfire/signal-definitions.hpp"
 #include "wayfire/util.hpp"
+
 #include "../output/output-impl.hpp"
+#include "seat/input-manager.hpp"
+#include "core-impl.hpp"
+
 #include <xf86drmMode.h>
 #include <sstream>
 #include <cstring>
@@ -15,6 +19,7 @@
 
 extern "C"
 {
+#include <wlr/config.h>
 #define static
 #include <wlr/backend.h>
 #include <wlr/backend/drm.h>
@@ -27,6 +32,7 @@ extern "C"
 #include <wlr/types/wlr_matrix.h>
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_output_management_v1.h>
+#include <wlr/types/wlr_output_power_management_v1.h>
 #include <wlr/render/wlr_renderer.h>
 #undef static
 }
@@ -158,7 +164,7 @@ namespace wf
             /* If we aren't moving to another output, then there is no need to
              * enumerate views either */
             views = from->workspace->get_views_in_layer(
-                wf::WM_LAYERS & (~wf::LAYER_XWAYLAND));
+                wf::WM_LAYERS & (~wf::LAYER_UNMANAGED));
             std::reverse(views.begin(), views.end());
         }
 
@@ -170,25 +176,32 @@ namespace wf
         {
             for (auto& view : views)
             {
-                view->set_output(to);
-                to->workspace->add_view(view, view->minimized ?
-                    wf::LAYER_MINIMIZED : wf::LAYER_WORKSPACE);
+                wf::get_core().move_view_to_output(view, to);
                 to->workspace->move_to_workspace(view,
                     to->workspace->get_current_workspace());
-                to->focus_view(view);
 
                 if (view->tiled_edges)
                     view->tile_request(view->tiled_edges);
 
                 if (view->fullscreen)
                     view->fullscreen_request(to, true);
+
+                if (!view->fullscreen && !view->tiled_edges && view->is_mapped())
+                {
+                    auto geometry = wf::clamp(view->get_wm_geometry(),
+                        to->workspace->get_workarea());
+                    view->set_geometry(geometry);
+                }
             }
         }
 
         /* just remove all other views - backgrounds, panels, etc.
          * desktop views have been removed by the previous cycle */
-        for (auto& view : from->workspace->get_views_in_layer(wf::ALL_LAYERS))
+        for (auto& view : wf::get_core().get_all_views())
         {
+            if (view->get_output() != from)
+                continue;
+
             if (view->is_mapped())
                 view->close();
 
@@ -197,7 +210,6 @@ namespace wf
         /* A note: at this point, some views might already have been deleted */
     }
 
-    constexpr wf::point_t output_state_t::default_position;
     bool output_state_t::operator == (const output_state_t& other) const
     {
         if (source == OUTPUT_IMAGE_SOURCE_NONE)
@@ -212,7 +224,9 @@ namespace wf
         bool eq = true;
 
         eq &= source == other.source;
-        eq &= position == other.position;
+        eq &= automatic_positioning == other.automatic_positioning;
+        if (!automatic_positioning)
+            eq &= position == other.position;
         eq &= (mode.width == other.mode.width);
         eq &= (mode.height == other.mode.height);
         eq &= (mode.refresh == other.mode.refresh);
@@ -228,7 +242,7 @@ namespace wf
         wlr_output *handle;
         output_state_t current_state;
 
-        std::unique_ptr<wf::output_t> output;
+        std::unique_ptr<wf::output_impl_t> output;
         wl_listener_wrapper on_destroy, on_mode;
         std::shared_ptr<wf::config::option_base_t>
             mode_opt, position_opt, scale_opt, transform_opt;
@@ -295,20 +309,18 @@ namespace wf
         {
             auto& lmanager = wf::get_core().output_layout;
             auto config = lmanager->get_current_configuration();
-            if (config.count(handle) && handle->current_mode)
+            if (config.count(handle) &&
+                config[handle].source == OUTPUT_IMAGE_SOURCE_SELF)
             {
-                if (config[handle].source == OUTPUT_IMAGE_SOURCE_SELF)
+                if (output && output->get_screen_size() != get_effective_size())
                 {
-                    int width = config[handle].mode.width;
-                    int height = config[handle].mode.height;
-
-                    if (width != handle->current_mode->width ||
-                        height != handle->current_mode->height)
-                    {
-                        /* mode changed. Apply new configuration. */
-                        config[handle].mode = *handle->current_mode;
-                        lmanager->apply_configuration(config);
-                    }
+                    /* mode changed. Apply new configuration. */
+                    current_state.mode.width = handle->width;
+                    current_state.mode.height = handle->height;
+                    current_state.mode.refresh = handle->refresh;
+                    this->output->set_effective_size(get_effective_size());
+                    this->output->render->damage_whole();
+                    emit_configuration_changed(wf::OUTPUT_MODE_CHANGE);
                 }
             }
         }
@@ -394,14 +406,15 @@ namespace wf
         output_state_t load_state_from_config()
         {
             output_state_t state;
-
-            state.position = output_state_t::default_position;
             auto set_position = position_opt->get_value_str();
             if (set_position != default_value)
             {
                 auto value = parse_output_layout(set_position);
                 if (value.second)
+                {
+                    state.automatic_positioning = false;
                     state.position = value.first;
+                }
             }
 
             /* Make sure we can use custom modes that are
@@ -447,12 +460,16 @@ namespace wf
             return state;
         }
 
-        void ensure_wayfire_output()
+        void ensure_wayfire_output(const wf::dimensions_t& effective_size)
         {
             if (this->output)
+            {
+                this->output->set_effective_size(effective_size);
                 return;
+            }
 
-            this->output = std::make_unique<wf::output_impl_t> (handle);
+            this->output =
+                std::make_unique<wf::output_impl_t> (handle, effective_size);
             auto wo = output.get();
 
             /* Focus the first output, but do not change the focus on subsequently
@@ -462,6 +479,15 @@ namespace wf
                 get_core().get_active_output()->handle : nullptr;
             if (!focused || wlr_output_is_noop(focused))
                 get_core().focus_output(wo);
+
+            /*
+             * At this point, this->output is a valid output and is part of the
+             * get_outputs() list.
+             *
+             * We have also have updated the focused output. So, at this point
+             * all plugin-relevant structures have been updated.
+             */
+            this->output->start_plugins();
 
             output_added_signal data;
             data.output = wo;
@@ -473,8 +499,14 @@ namespace wf
             if (!this->output)
                 return;
 
-            LOGE("disable output: ", output->handle->name);
+            LOGE("disabling output: ", output->handle->name);
+
             auto wo = output.get();
+            output_removed_signal data;
+            data.output = wo;
+
+            wo->emit_signal("pre-remove", &data);
+            get_core().output_layout->emit_signal("output-pre-remove", &data);
 
             if (get_core().get_active_output() == wo && !shutdown)
             {
@@ -488,9 +520,6 @@ namespace wf
              * going to shut down the compositor */
             transfer_views(wo,
                 shutdown ? nullptr : get_core().get_active_output());
-
-            output_removed_signal data;
-            data.output = wo;
             get_core().output_layout->emit_signal("output-removed", &data);
             this->output = nullptr;
         }
@@ -701,6 +730,28 @@ namespace wf
             on_frame.disconnect();
         }
 
+        wf::dimensions_t get_effective_size()
+        {
+            wf::dimensions_t effective_size;
+            wlr_output_effective_resolution(handle,
+                &effective_size.width, &effective_size.height);
+            return effective_size;
+        }
+
+        /**
+         * Send the output-configuration-changed signal.
+         */
+        void emit_configuration_changed(uint32_t changed_fields)
+        {
+            if (!wlr_output_is_noop(handle) && changed_fields)
+            {
+                wf::output_configuration_changed_signal data{current_state};
+                data.output = output.get();
+                data.changed_fields = changed_fields;
+                output->emit_signal("output-configuration-changed", &data);
+            }
+        }
+
         /** Apply the given state to the output, ignoring position.
          *
          * This won't have any effect if the output state can't be applied,
@@ -710,28 +761,37 @@ namespace wf
             if (!test_state(state))
                 return;
 
+            uint32_t changed_fields = 0;
+            if (this->current_state.source != state.source)
+                changed_fields |= wf::OUTPUT_SOURCE_CHANGE;
+            if (this->current_state.mode.width != state.mode.width ||
+                this->current_state.mode.height != state.mode.height ||
+                this->current_state.mode.refresh != state.mode.refresh)
+            {
+                changed_fields |= wf::OUTPUT_MODE_CHANGE;
+            }
+            if (this->current_state.scale != state.scale)
+                changed_fields |= wf::OUTPUT_SCALE_CHANGE;
+            if (this->current_state.transform != state.transform)
+                changed_fields |= wf::OUTPUT_TRANSFORM_CHANGE;
+            if (this->current_state.position != state.position)
+                changed_fields |= wf::OUTPUT_POSITION_CHANGE;
+
             this->current_state = state;
 
             /* Even if output will remain mirrored, we can tear it down and set
              * up again, in case the output to mirror from changed */
             teardown_mirror();
-            if (state.source & OUTPUT_IMAGE_SOURCE_NONE)
+
+            if (state.source == OUTPUT_IMAGE_SOURCE_NONE)
             {
-                /* DPMS or OFF */
+                /* output is OFF */
+                destroy_wayfire_output(is_shutdown);
                 set_enabled(false);
-                if (state.source == OUTPUT_IMAGE_SOURCE_NONE)
-                {
-                    /* OFF */
-                    destroy_wayfire_output(is_shutdown);
-                    return;
-                }
-            }
-            else
-            {
-                /* SELF or MIRROR */
-                set_enabled(true);
+                return;
             }
 
+            set_enabled(!(state.source & OUTPUT_IMAGE_SOURCE_NONE));
             apply_mode(state.mode);
             if (state.source & OUTPUT_IMAGE_SOURCE_SELF)
             {
@@ -739,14 +799,17 @@ namespace wf
                     wlr_output_set_transform(handle, state.transform);
 
                 if (handle->scale != state.scale)
+                {
                     wlr_output_set_scale(handle, state.scale);
+                    wf::get_core_impl().input->cursor->load_xcursor_scale(
+                        state.scale);
+                }
 
                 wlr_output_commit(handle);
 
-                ensure_wayfire_output();
+                ensure_wayfire_output(get_effective_size());
                 output->render->damage_whole();
-                if (!wlr_output_is_noop(handle))
-                    output->emit_signal("output-configuration-changed", nullptr);
+                emit_configuration_changed(changed_fields);
             }
             else /* state.source == OUTPUT_IMAGE_SOURCE_MIRROR */
             {
@@ -763,10 +826,13 @@ namespace wf
 
         wlr_output_layout *output_layout;
         wlr_output_manager_v1 *output_manager;
+        wlr_output_power_manager_v1 *output_pw_manager;
 
         wl_listener_wrapper on_new_output;
         wl_listener_wrapper on_output_manager_test;
         wl_listener_wrapper on_output_manager_apply;
+        wl_listener_wrapper on_output_power_mode_set;
+
         wl_idle_call idle_init_noop;
         wl_idle_call idle_update_configuration;
         wl_timer timer_remove_noop;
@@ -821,6 +887,12 @@ namespace wf
 
             on_output_manager_test.connect(&output_manager->events.test);
             on_output_manager_apply.connect(&output_manager->events.apply);
+
+            output_pw_manager = wlr_output_power_manager_v1_create(get_core().display);
+            on_output_power_mode_set.set_callback([=] (void *data) {
+                set_power_mode((wlr_output_power_v1_set_mode_event*)data);
+            });
+            on_output_power_mode_set.connect(&output_pw_manager->events.set_mode);
         }
 
         ~impl()
@@ -1054,7 +1126,7 @@ namespace wf
                 }
             }
 
-            /* Second: enable outputs */
+            /* Second: enable outputs with fixed positions. */
             int count_enabled = 0;
             for (auto& entry : config)
             {
@@ -1062,21 +1134,44 @@ namespace wf
                 auto& state = entry.second;
                 auto& lo = this->outputs[handle];
 
-                if (state.source & OUTPUT_IMAGE_SOURCE_SELF)
+                if (state.source & OUTPUT_IMAGE_SOURCE_SELF &&
+                    !entry.second.automatic_positioning)
                 {
                     ++count_enabled;
-                    if (entry.second.position != output_state_t::default_position) {
-                        wlr_output_layout_add(output_layout, handle,
-                            state.position.x, state.position.y);
-                    } else {
-                        wlr_output_layout_add_auto(output_layout, handle);
-                    }
+                    wlr_output_layout_add(output_layout, handle,
+                        state.position.x, state.position.y);
+                    lo->apply_state(state, shutdown_received);
+                }
+            }
+
+            /*
+             * Third: enable dynamically positioned outputs.
+             * Since outputs with fixed positions were already added, we know
+             * that the outputs here will not be moved after they are added to
+             * the output_layout.
+             */
+            for (auto& entry : config)
+            {
+                auto& handle = entry.first;
+                auto& lo = this->outputs[handle];
+                auto state = entry.second;
+                if (state.source & OUTPUT_IMAGE_SOURCE_SELF &&
+                    entry.second.automatic_positioning)
+                {
+                    ++count_enabled;
+                    wlr_output_layout_add_auto(output_layout, handle);
+
+                    /* Get the correct position */
+                    auto box = wlr_output_layout_get_box(output_layout, handle);
+                    assert(box);
+                    state.position.x = box->x;
+                    state.position.y = box->y;
 
                     lo->apply_state(state, shutdown_received);
                 }
             }
 
-            /* Third: enable mirrored outputs */
+            /* Fourth: enable mirrored outputs */
             for (auto& entry : config)
             {
                 auto& handle = entry.first;
@@ -1127,6 +1222,19 @@ namespace wf
 
             wlr_output_manager_v1_set_configuration(output_manager,
                 wlr_configuration);
+        }
+
+        void set_power_mode(wlr_output_power_v1_set_mode_event *ev)
+        {
+            LOGD("output: ", ev->output->name, " power mode: ", ev->mode);
+            auto config = get_current_configuration();
+            if (!config.count(ev->output))
+                return;
+
+            config[ev->output].source =
+                (ev->mode == ZWLR_OUTPUT_POWER_V1_MODE_ON ?
+                 OUTPUT_IMAGE_SOURCE_SELF : OUTPUT_IMAGE_SOURCE_DPMS);
+            apply_configuration(config);
         }
 
         /* Public API functions */

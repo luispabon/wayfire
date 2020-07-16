@@ -198,6 +198,12 @@ namespace wf
             remove_if([=] (const T& el) { return el == value; });
         }
 
+        /* Remove all elements from the list */
+        void clear()
+        {
+            remove_if([] (const T& el) { return true; });
+        }
+
         /* Remove all elements satisfying a given condition.
          * This function resets their pointers and scheduling a cleanup operation */
         void remove_if(std::function<bool(const T&)> predicate)

@@ -111,6 +111,7 @@ void wf::view_interface_t::set_toplevel_parent(wayfire_view new_parent)
         if (this->get_output())
             this->get_output()->workspace->remove_view(self());
 
+        this->set_output(parent->get_output());
         /* if the view isn't mapped, then it will be positioned properly in map() */
         if (is_mapped())
             reposition_relative_to_parent(self());
@@ -353,6 +354,11 @@ void wf::view_interface_t::set_minimized(bool minim)
         get_output()->focus_view(self(), true);
     }
 
+    view_minimized_signal data;
+    data.view = self();
+    data.state = minimized;
+    get_output()->emit_signal("view-minimized", &data);
+
     desktop_state_updated();
 }
 
@@ -387,28 +393,13 @@ void wf::view_interface_t::set_fullscreen(bool full)
     if (view_impl->frame)
         view_impl->frame->notify_view_fullscreen();
 
-    if (fullscreen && get_output())
-    {
-        /* Will trigger raising to fullscreen layer in workspace-manager */
-        get_output()->workspace->bring_to_front(self());
-    }
-
-    /**
-     * If the view is no longer fullscreen, we potentially need to lower it
-     * to the workspace layer
-     */
-    bool needs_lowering =
-        get_output()->workspace->get_view_layer(self()) == wf::LAYER_FULLSCREEN;
-
-    if (!fullscreen && get_output() && needs_lowering)
-        get_output()->workspace->add_view(self(), wf::LAYER_WORKSPACE);
-
     view_fullscreen_signal data;
     data.view = self();
     data.state = full;
     data.desired_size = {0, 0, 0, 0};
 
-    get_output()->emit_signal("view-fullscreen", &data);
+    if (get_output())
+        get_output()->emit_signal("view-fullscreen", &data);
     this->emit_signal("fullscreen", &data);
     desktop_state_updated();
 }
@@ -538,6 +529,9 @@ void wf::view_interface_t::fullscreen_request(wf::output_t *out, bool state)
 
 bool wf::view_interface_t::is_visible()
 {
+    if (view_impl->visibility_counter <= 0)
+        return false;
+
     if (is_mapped())
         return true;
 
@@ -551,10 +545,20 @@ bool wf::view_interface_t::is_visible()
      * least 2 references, which would mean that the view is in unmap animation.
      */
     if (view_impl->is_alive) {
-        return priv->ref_cnt >= 2;
+        return view_impl->ref_cnt >= 2;
     } else {
-        return priv->ref_cnt >= 1;
+        return view_impl->ref_cnt >= 1;
     }
+}
+
+void wf::view_interface_t::set_visible(bool visible)
+{
+    this->view_impl->visibility_counter += (visible ? 1 : -1);
+    if (this->view_impl->visibility_counter > 1) {
+        LOGE("set_visible(true) called more often than set_visible(false)!");
+    }
+
+    this->damage();
 }
 
 void wf::view_interface_t::damage()
@@ -566,7 +570,12 @@ void wf::view_interface_t::damage()
 
 wlr_box wf::view_interface_t::get_minimize_hint()
 {
-    return { 0, 0, 0, 0 };
+    return this->view_impl->minimize_hint;
+}
+
+void wf::view_interface_t::set_minimize_hint(wlr_box hint)
+{
+    this->view_impl->minimize_hint = hint;
 }
 
 bool wf::view_interface_t::should_be_decorated()
@@ -583,7 +592,7 @@ void wf::view_interface_t::set_decoration(surface_interface_t *frame)
     {
         damage();
         if (view_impl->decoration)
-            view_impl->decoration->unref();
+            this->remove_subsurface(view_impl->decoration);
         view_impl->decoration = nullptr;
         view_impl->frame = nullptr;
         emit_signal("decoration-changed", nullptr);
@@ -599,17 +608,11 @@ void wf::view_interface_t::set_decoration(surface_interface_t *frame)
     /* First, delete old decoration if any */
     damage();
     if (view_impl->decoration)
-        view_impl->decoration->unref();
+        this->remove_subsurface(view_impl->decoration);
 
     view_impl->decoration = frame;
     view_impl->frame = dynamic_cast<wf::decorator_frame_t_t*> (frame);
     assert(frame);
-
-    /* Move the decoration as the last child surface */
-    auto container = this->priv->surface_children;
-    auto it = std::remove(container.begin(), container.end(), frame);
-    container.erase(it);
-    container.push_back(frame);
 
     /* Calculate the wm geometry of the view after adding the decoration.
      *
@@ -696,7 +699,8 @@ void wf::view_interface_t::pop_transformer(
      * won't help at this stage (damage is already calculated).
      *
      * Instead, we directly damage the whole output for the next frame */
-    get_output()->render->damage_whole_idle();
+    if (get_output())
+        get_output()->render->damage_whole_idle();
 }
 
 void wf::view_interface_t::pop_transformer(std::string name)
@@ -806,31 +810,18 @@ bool wf::view_interface_t::intersects_region(const wlr_box& region)
     return false;
 }
 
-void wf::view_interface_t::subtract_transformed_opaque(
-    wf::region_t& region, int x, int y)
+wf::region_t wf::view_interface_t::get_transformed_opaque_region()
 {
     if (!is_mapped())
-        return;
+        return {};
 
-    /*
-     * We want to figure out the union of opaque regions.
-     *
-     * So, we first subtract all opaque regions from the full region, and then
-     * invert it.
-     */
     auto obox = get_untransformed_bounding_box();
     auto og = get_output_geometry();
 
-    float scale = get_output()->handle->scale;
-
-    wf::region_t full = obox;
-    full *= scale;
-    wf::region_t opaque = full;
+    wf::region_t opaque;
     for (auto& surf : enumerate_surfaces({og.x, og.y}))
-        surf.surface->subtract_opaque(opaque, surf.position.x, surf.position.y);
+        opaque |= surf.surface->get_opaque_region(surf.position);
 
-    opaque = full ^ opaque;
-    opaque *= 1.0 / scale;
     auto bbox = obox;
     this->view_impl->transforms.for_each(
         [&] (const std::shared_ptr<view_transform_block_t> tr) {
@@ -838,9 +829,7 @@ void wf::view_interface_t::subtract_transformed_opaque(
             bbox = tr->transform->get_bounding_box(bbox, bbox);
         });
 
-    opaque += -wf::point_t{x, y};
-    priv->scale_opaque_region(opaque, 0);
-    region ^= opaque;
+    return opaque;
 }
 
 bool wf::view_interface_t::render_transformed(const wf::framebuffer_t& framebuffer,
@@ -907,9 +896,8 @@ bool wf::view_interface_t::render_transformed(const wf::framebuffer_t& framebuff
         OpenGL::render_end();
 
         /* Actually render the transform to the next framebuffer */
-        wf::region_t whole_region{wlr_box{0, 0, scaled_width, scaled_height}};
         transform->transform->render_with_damage(previous_texture, obox,
-            whole_region, transform->fb);
+            wf::region_t{transformed_box}, transform->fb);
 
         previous_transform = transform;
         previous_texture = previous_transform->fb.tex;
@@ -935,7 +923,7 @@ bool wf::view_interface_t::render_transformed(const wf::framebuffer_t& framebuff
 
         for (const auto& rect : damage)
         {
-            framebuffer.scissor(wlr_box_from_pixman_box(rect));
+            framebuffer.logic_scissor(wlr_box_from_pixman_box(rect));
             OpenGL::render_transformed_texture(previous_texture, src_geometry,
                 {}, matrix);
         }
@@ -985,57 +973,71 @@ void wf::view_interface_t::take_snapshot()
         offscreen_buffer.cached_damage |= buffer_geometry;
     }
 
-    offscreen_buffer.cached_damage +=
-        -wf::point_t{buffer_geometry.x, buffer_geometry.y};
-
     OpenGL::render_begin();
     offscreen_buffer.allocate(scaled_width, scaled_height);
     offscreen_buffer.scale = scale;
     offscreen_buffer.bind();
     for (auto& box : offscreen_buffer.cached_damage)
     {
-        offscreen_buffer.scissor(
-            offscreen_buffer.framebuffer_box_from_geometry_box(
-                wlr_box_from_pixman_box(box)));
+        offscreen_buffer.logic_scissor(wlr_box_from_pixman_box(box));
         OpenGL::clear({0, 0, 0, 0});
     }
 
     OpenGL::render_end();
 
-    wf::region_t damage_region;
-    for (auto& rect : offscreen_buffer.cached_damage)
-    {
-        auto box = wlr_box_from_pixman_box(rect);
-        damage_region |= offscreen_buffer.damage_box_from_geometry_box(box);
-    }
-
     auto output_geometry = get_output_geometry();
-    int ox = output_geometry.x - buffer_geometry.x;
-    int oy = output_geometry.y - buffer_geometry.y;
-
-    auto children = enumerate_surfaces({ox, oy});
+    auto children = enumerate_surfaces({output_geometry.x, output_geometry.y});
     for (auto& child : wf::reverse(children))
     {
+        wlr_box child_box{
+            child.position.x,
+            child.position.y,
+            child.surface->get_size().width,
+            child.surface->get_size().height
+        };
+
         child.surface->simple_render(offscreen_buffer,
-            child.position.x, child.position.y, damage_region);
+            child.position.x, child.position.y,
+            offscreen_buffer.cached_damage & child_box);
     }
 
     offscreen_buffer.cached_damage.clear();
 }
 
-wf::view_interface_t::view_interface_t() : surface_interface_t(nullptr)
+wf::view_interface_t::view_interface_t()
 {
     this->view_impl = std::make_unique<wf::view_interface_t::view_priv_impl>();
+    take_ref();
+}
+
+void wf::view_interface_t::take_ref()
+{
+    ++view_impl->ref_cnt;
+}
+
+void wf::view_interface_t::unref()
+{
+    --view_impl->ref_cnt;
+    if (view_impl->ref_cnt <= 0)
+        destruct();
 }
 
 void wf::view_interface_t::initialize()
+{ }
+
+void wf::view_interface_t::deinitialize()
 {
-    if (get_output() && get_output()->workspace->get_view_layer(self()) == 0)
-    {
-        /* Ensure the view is always on a given layer, because otherwise there
-         * is no way to iterate over all views which belong to a given output.*/
-        get_output()->workspace->add_view(self(), wf::LAYER_WORKSPACE);
-    }
+    this->view_impl->decoration = nullptr;
+    this->view_impl->frame = nullptr;
+
+    this->priv->surface_children_below.clear();
+    this->priv->surface_children_above.clear();
+    this->view_impl->transforms.clear();
+    this->_clear_data();
+
+    OpenGL::render_begin();
+    this->view_impl->offscreen_buffer.release();
+    OpenGL::render_end();
 }
 
 wf::view_interface_t::~view_interface_t()
@@ -1061,9 +1063,6 @@ void wf::view_damage_raw(wayfire_view view, const wlr_box& box)
     if (!output)
         return;
 
-    auto damage_box = output->render->get_target_framebuffer().
-        damage_box_from_geometry_box(box);
-
     /* shell views are visible in all workspaces. That's why we must apply
      * their damage to all workspaces as well */
     if (view->role == wf::VIEW_ROLE_DESKTOP_ENVIRONMENT)
@@ -1073,8 +1072,8 @@ void wf::view_damage_raw(wayfire_view view, const wlr_box& box)
 
         /* Damage only the visible region of the shell view.
          * This prevents hidden panels from spilling damage onto other workspaces */
-        wlr_box ws_box = output->render->get_damage_box();
-        wlr_box visible_damage = geometry_intersection(damage_box, ws_box);
+        wlr_box ws_box = output->get_relative_geometry();
+        wlr_box visible_damage = geometry_intersection(box, ws_box);
         for (int i = 0; i < wsize.width; i++)
         {
             for (int j = 0; j < wsize.height; j++)
@@ -1086,7 +1085,7 @@ void wf::view_damage_raw(wayfire_view view, const wlr_box& box)
         }
     } else
     {
-        output->render->damage(damage_box);
+        output->render->damage(box);
     }
 
     view->emit_signal("damaged-region", nullptr);
@@ -1095,6 +1094,5 @@ void wf::view_damage_raw(wayfire_view view, const wlr_box& box)
 void wf::view_interface_t::destruct()
 {
     view_impl->is_alive = false;
-    view_impl->idle_destruct.run_once(
-        [&] () {wf::get_core_impl().erase_view(self());});
+    wf::get_core_impl().erase_view(self());
 }

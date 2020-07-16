@@ -241,7 +241,7 @@ class wayfire_cube : public wf::plugin_interface_t
             return false;
 
         output->render->set_renderer(renderer);
-        output->render->set_redraw_always(true);
+        output->render->schedule_redraw();
         grab_interface->grab();
         return true;
     }
@@ -259,7 +259,6 @@ class wayfire_cube : public wf::plugin_interface_t
             return;
 
         output->render->set_renderer(nullptr);
-        output->render->set_redraw_always(false);
 
         grab_interface->ungrab();
         output->deactivate_plugin(grab_interface);
@@ -351,8 +350,7 @@ class wayfire_cube : public wf::plugin_interface_t
     void input_ungrabbed()
     {
         wf::get_core().set_cursor("default");
-        wf::get_core().warp_cursor(
-            saved_pointer_position.x, saved_pointer_position.y);
+        wf::get_core().warp_cursor(saved_pointer_position);
 
         animation.in_exit = true;
 
@@ -449,16 +447,6 @@ class wayfire_cube : public wf::plugin_interface_t
 
     void render(const wf::framebuffer_t& dest)
     {
-        if (!animation.cube_animation.running() &&
-            output->render->get_scheduled_damage().empty())
-        {
-            /*
-             * No workspace was updated, and no animation is running. We can skip
-             * repainting.
-             */
-            return;
-        }
-
         update_workspace_streams();
         if (program.get_program_id(wf::TEXTURE_TYPE_RGBA) == 0)
             load_program();
@@ -516,11 +504,15 @@ class wayfire_cube : public wf::plugin_interface_t
         OpenGL::render_end();
 
         update_view_matrix();
-        if (animation.cube_animation.running())
-            output->render->schedule_redraw();
 
-        if (animation.in_exit && !animation.cube_animation.running())
+        if (animation.cube_animation.running())
+        {
+            output->render->schedule_redraw();
+        }
+        else if (animation.in_exit)
+        {
             deactivate();
+        }
     }
 
     void pointer_moved(wlr_event_pointer_motion* ev)

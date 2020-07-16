@@ -86,6 +86,7 @@ class input_manager
         wf::signal_callback_t surface_map_state_changed;
         wf::signal_callback_t output_added;
 
+        void refresh_device_mappings();
     public:
         /* TODO: move this in a wf_keyboard struct,
          * This might not work with multiple keyboards */

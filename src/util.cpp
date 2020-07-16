@@ -32,6 +32,16 @@ std::ostream& operator << (std::ostream& stream, const wf::pointf_t& pointf)
     return stream;
 }
 
+bool operator == (const wf::dimensions_t& a, const wf::dimensions_t& b)
+{
+    return a.width == b.width && a.height == b.height;
+}
+
+bool operator != (const wf::dimensions_t& a, const wf::dimensions_t& b)
+{
+    return !(a == b);
+}
+
 bool operator == (const wf::point_t& a, const wf::point_t& b)
 {
     return a.x == b.x && a.y == b.y;
@@ -80,6 +90,18 @@ wf::geometry_t operator + (const wf::geometry_t &a, const wf::point_t& b)
 wf::point_t operator - (const wf::point_t& a)
 {
     return {-a.x, -a.y};
+}
+
+wf::geometry_t operator * (const wf::geometry_t& box, double scale)
+{
+    wlr_box scaled;
+    scaled.x = std::floor(box.x * scale);
+    scaled.y = std::floor(box.y * scale);
+    /* Scale it the same way that regions are scaled, otherwise
+     * we get numerical issues. */
+    scaled.width = std::ceil((box.x + box.width) * scale) - scaled.x;
+    scaled.height = std::ceil((box.y + box.height) * scale) - scaled.y;
+    return scaled;
 }
 
 double abs(const wf::point_t& p)

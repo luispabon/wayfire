@@ -13,7 +13,7 @@ extern "C"
 }
 
 wf_drag_icon::wf_drag_icon(wlr_drag_icon *ic)
-    : wf::wlr_child_surface_base_t(nullptr, this), icon(ic)
+    : wf::wlr_child_surface_base_t(this), icon(ic)
 {
     on_map.set_callback([&] (void*) { this->map(icon->surface); });
     on_unmap.set_callback([&] (void*) { this->unmap(); });
@@ -67,9 +67,7 @@ void wf_drag_icon::damage_surface_box(const wlr_box& box)
             auto local = damage;
             local.x -= output_geometry.x;
             local.y -= output_geometry.y;
-
-            const auto& fb = output->render->get_target_framebuffer();
-            output->render->damage(fb.damage_box_from_geometry_box(local));
+            output->render->damage(local);
         }
     }
 }

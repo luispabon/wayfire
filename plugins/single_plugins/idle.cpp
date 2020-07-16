@@ -16,13 +16,13 @@ extern "C"
 #include <wayfire/util/duration.hpp>
 #include <wayfire/util/log.hpp>
 
-#define ZOOM_BASE 1.0
+#define CUBE_ZOOM_BASE 1.0
 
-enum screensaver_state
+enum cube_screensaver_state
 {
-    SCREENSAVER_DISABLED,
-    SCREENSAVER_RUNNING,
-    SCREENSAVER_STOPPING
+    CUBE_SCREENSAVER_DISABLED,
+    CUBE_SCREENSAVER_RUNNING,
+    CUBE_SCREENSAVER_STOPPING
 };
 
 using namespace wf::animation;
@@ -37,30 +37,13 @@ class screensaver_animation_t : public duration_t
 
 class wayfire_idle
 {
-    double rotation = 0.0;
-
-    wf::option_wrapper_t<int> zoom_speed{"idle/cube_zoom_speed"};
-    screensaver_animation_t screensaver_animation{zoom_speed};
-
-    wf::option_wrapper_t<int> dpms_timeout{"idle/dpms_timeout"};
-    wf::option_wrapper_t<int> screensaver_timeout{"idle/screensaver_timeout"};
-    wf::option_wrapper_t<double> cube_rotate_speed{"idle/cube_rotate_speed"};
-    wf::option_wrapper_t<double> cube_max_zoom{"idle/cube_max_zoom"};
     wf::option_wrapper_t<bool> disable_on_fullscreen{"idle/disable_on_fullscreen"};
-
     wf::config::option_base_t::updated_callback_t disable_on_fullscreen_changed;
-
-    screensaver_state state = SCREENSAVER_DISABLED;
-    std::map<wf::output_t*, bool> screensaver_hook_set;
-    bool outputs_inhibited = false;
+    wf::option_wrapper_t<int> dpms_timeout{"idle/dpms_timeout"};
+    wf::wl_listener_wrapper on_idle_dpms, on_resume_dpms;
+    wlr_idle_timeout *timeout_dpms = NULL;
     bool idle_enabled = true;
     int idle_inhibit_ref = 0;
-    uint32_t last_time;
-
-    wlr_idle_timeout *timeout_screensaver = NULL;
-    wlr_idle_timeout *timeout_dpms = NULL;
-    wf::wl_listener_wrapper on_idle_screensaver, on_resume_screensaver;
-    wf::wl_listener_wrapper on_idle_dpms, on_resume_dpms;
 
   public:
     wayfire_idle()
@@ -69,11 +52,6 @@ class wayfire_idle
             create_dpms_timeout(dpms_timeout);
         });
         create_dpms_timeout(dpms_timeout);
-
-        screensaver_timeout.set_callback([=] () {
-            create_screensaver_timeout(screensaver_timeout);
-        });
-        create_screensaver_timeout(screensaver_timeout);
 
         disable_on_fullscreen_changed = [=] ()
         {
@@ -99,21 +77,6 @@ class wayfire_idle
         timeout_dpms = NULL;
     }
 
-    void destroy_screensaver_timeout()
-    {
-        if (state == SCREENSAVER_RUNNING)
-            stop_screensaver();
-
-        if (timeout_screensaver)
-        {
-            on_idle_screensaver.disconnect();
-            on_resume_screensaver.disconnect();
-            wlr_idle_timeout_destroy(timeout_screensaver);
-        }
-
-        timeout_screensaver = NULL;
-    }
-
     void create_dpms_timeout(int timeout_sec)
     {
         destroy_dpms_timeout();
@@ -135,195 +98,9 @@ class wayfire_idle
         on_resume_dpms.connect(&timeout_dpms->events.resume);
     }
 
-    void create_screensaver_timeout(int timeout_sec)
-    {
-        destroy_screensaver_timeout();
-        if (timeout_sec <= 0)
-            return;
-
-        timeout_screensaver = wlr_idle_timeout_create(wf::get_core().protocols.idle,
-            wf::get_core().get_current_seat(), 1000 * timeout_sec);
-        on_idle_screensaver.set_callback([&] (void*) {
-            start_screensaver();
-        });
-        on_idle_screensaver.connect(&timeout_screensaver->events.idle);
-
-        on_resume_screensaver.set_callback([&] (void*) {
-            stop_screensaver();
-        });
-        on_resume_screensaver.connect(&timeout_screensaver->events.resume);
-    }
-
-    void inhibit_outputs()
-    {
-        if (state == SCREENSAVER_DISABLED || outputs_inhibited)
-            return;
-
-        for (auto& output : wf::get_core().output_layout->get_outputs())
-        {
-            if (screensaver_hook_set[output])
-            {
-                output->render->rem_effect(&screensaver_frame);
-                screensaver_hook_set[output] = false;
-            }
-            output->render->add_inhibit(true);
-            output->render->damage_whole();
-        }
-        screensaver_hook_set.clear();
-        state = SCREENSAVER_DISABLED;
-        outputs_inhibited = true;
-    }
-
-    void screensaver_terminate()
-    {
-        cube_control_signal data;
-        data.angle = 0.0;
-        data.zoom = ZOOM_BASE;
-        data.ease = 0.0;
-        data.last_frame = true;
-        for (auto& output : wf::get_core().output_layout->get_outputs())
-        {
-            output->emit_signal("cube-control", &data);
-            if (screensaver_hook_set[output])
-            {
-                output->render->rem_effect(&screensaver_frame);
-                screensaver_hook_set[output] = false;
-            }
-            if (state == SCREENSAVER_DISABLED && outputs_inhibited)
-            {
-                output->render->add_inhibit(false);
-                output->render->damage_whole();
-                outputs_inhibited = false;
-            }
-        }
-        state = SCREENSAVER_DISABLED;
-    }
-
-    wf::effect_hook_t screensaver_frame = [=]()
-    {
-        cube_control_signal data;
-        bool all_outputs_active = true;
-        uint32_t current = wf::get_current_time();
-        uint32_t elapsed = current - last_time;
-
-        last_time = current;
-
-        if (state == SCREENSAVER_STOPPING && !screensaver_animation.running())
-        {
-            screensaver_terminate();
-            return;
-        }
-
-        if (state == SCREENSAVER_STOPPING) {
-            rotation  = screensaver_animation.rot;
-        } else {
-            rotation += (cube_rotate_speed / 5000.0) * elapsed;
-        }
-
-        if (rotation > M_PI * 2)
-            rotation -= M_PI * 2;
-
-        data.angle = rotation;
-        data.zoom = screensaver_animation.zoom;
-        data.ease = screensaver_animation.ease;
-        data.last_frame = false;
-
-        for (auto& output : wf::get_core().output_layout->get_outputs())
-        {
-            output->emit_signal("cube-control", &data);
-            if (!data.carried_out)
-            {
-                all_outputs_active = false;
-                break;
-            }
-        }
-
-        if (!all_outputs_active)
-        {
-            inhibit_outputs();
-            state = SCREENSAVER_DISABLED;
-            return;
-        }
-
-        if (state == SCREENSAVER_STOPPING)
-        {
-            wlr_idle_notify_activity(wf::get_core().protocols.idle,
-                wf::get_core().get_current_seat());
-        }
-    };
-
-    void start_screensaver()
-    {
-        cube_control_signal data;
-        data.angle = 0.0;
-        data.zoom = ZOOM_BASE;
-        data.ease = 0.0;
-        data.last_frame = false;
-        bool all_outputs_active = true;
-        bool hook_set = false;
-
-        for (auto& output : wf::get_core().output_layout->get_outputs())
-        {
-            output->emit_signal("cube-control", &data);
-            if (data.carried_out)
-            {
-                if (!screensaver_hook_set[output] && !hook_set)
-                {
-                    output->render->add_effect(
-                        &screensaver_frame, wf::OUTPUT_EFFECT_PRE);
-                    hook_set = screensaver_hook_set[output] = true;
-                }
-            }
-            else
-            {
-                all_outputs_active = false;
-            }
-        }
-
-        state = SCREENSAVER_RUNNING;
-
-        if (!all_outputs_active)
-        {
-            inhibit_outputs();
-            state = SCREENSAVER_DISABLED;
-            return;
-        }
-
-        rotation = 0.0;
-        screensaver_animation.zoom.set(ZOOM_BASE, cube_max_zoom);
-        screensaver_animation.ease.set(0.0, 1.0);
-        screensaver_animation.start();
-        last_time = wf::get_current_time();
-    }
-
-    void stop_screensaver()
-    {
-        if (state == SCREENSAVER_DISABLED)
-        {
-            if (outputs_inhibited)
-            {
-                for (auto& output : wf::get_core().output_layout->get_outputs())
-                {
-                    output->render->add_inhibit(false);
-                    output->render->damage_whole();
-                }
-                outputs_inhibited = false;
-            }
-            return;
-        }
-
-        state = SCREENSAVER_STOPPING;
-        double end = rotation > M_PI ? M_PI * 2 : 0.0;
-        screensaver_animation.rot.set(rotation, end);
-        screensaver_animation.zoom.restart_with_end(ZOOM_BASE);
-        screensaver_animation.ease.restart_with_end(0.0);
-        screensaver_animation.start();
-    }
-
     ~wayfire_idle()
     {
         destroy_dpms_timeout();
-        destroy_screensaver_timeout();
 
         /* Make sure idle is enabled */
         if (!idle_enabled)
@@ -383,6 +160,22 @@ class wayfire_idle
 
 class wayfire_idle_singleton : public wf::singleton_plugin_t<wayfire_idle>
 {
+    double rotation = 0.0;
+
+    wf::option_wrapper_t<int> zoom_speed{"idle/cube_zoom_speed"};
+    screensaver_animation_t screensaver_animation{zoom_speed};
+    wf::option_wrapper_t<int> screensaver_timeout{"idle/screensaver_timeout"};
+    wf::option_wrapper_t<double> cube_rotate_speed{"idle/cube_rotate_speed"};
+    wf::option_wrapper_t<double> cube_max_zoom{"idle/cube_max_zoom"};
+
+    cube_screensaver_state state = CUBE_SCREENSAVER_DISABLED;
+    bool hook_set = false;
+    bool output_inhibited = false;
+    uint32_t last_time;
+    wlr_idle_timeout *timeout_screensaver = NULL;
+    wf::wl_listener_wrapper on_idle_screensaver, on_resume_screensaver;
+    wf::pointf_t saved_cursor_position;
+
     wf::activator_callback toggle = [=] (wf::activator_source_t, uint32_t)
     {
         if (!output->can_activate_plugin(grab_interface))
@@ -394,9 +187,14 @@ class wayfire_idle_singleton : public wf::singleton_plugin_t<wayfire_idle>
 
     wf::signal_connection_t fullscreen_state_changed{[this] (wf::signal_data_t *data)
     {
-        bool state = data ? true : false;
-
-        state ? get_instance().idle_inhibit() : get_instance().idle_enable();
+        if (data)
+        {
+            get_instance().idle_inhibit();
+        }
+        else
+        {
+            get_instance().idle_enable();
+        }
     }};
 
     void init() override
@@ -410,17 +208,211 @@ class wayfire_idle_singleton : public wf::singleton_plugin_t<wayfire_idle>
             &toggle);
         output->connect_signal("fullscreen-layer-focused", &fullscreen_state_changed);
 
-        auto fs_views = output->workspace->get_views_on_workspace(
-            output->workspace->get_current_workspace(),
-            wf::LAYER_FULLSCREEN, true);
+        auto fs_views = output->workspace->get_promoted_views(
+            output->workspace->get_current_workspace());
         if (fs_views.size())
         {
             get_instance().idle_inhibit();
         }
+
+        screensaver_timeout.set_callback([=] () {
+            create_screensaver_timeout(screensaver_timeout);
+        });
+        create_screensaver_timeout(screensaver_timeout);
+    }
+
+    void destroy_screensaver_timeout()
+    {
+        if (state == CUBE_SCREENSAVER_RUNNING)
+            stop_screensaver();
+
+        if (timeout_screensaver)
+        {
+            on_idle_screensaver.disconnect();
+            on_resume_screensaver.disconnect();
+            wlr_idle_timeout_destroy(timeout_screensaver);
+        }
+
+        timeout_screensaver = NULL;
+    }
+
+    void create_screensaver_timeout(int timeout_sec)
+    {
+        destroy_screensaver_timeout();
+        if (timeout_sec <= 0)
+            return;
+
+        timeout_screensaver = wlr_idle_timeout_create(wf::get_core().protocols.idle,
+            wf::get_core().get_current_seat(), 1000 * timeout_sec);
+        on_idle_screensaver.set_callback([&] (void*) {
+            start_screensaver();
+        });
+        on_idle_screensaver.connect(&timeout_screensaver->events.idle);
+
+        on_resume_screensaver.set_callback([&] (void*) {
+            stop_screensaver();
+        });
+        on_resume_screensaver.connect(&timeout_screensaver->events.resume);
+    }
+
+    void inhibit_output()
+    {
+        if (output_inhibited)
+        {
+            return;
+        }
+
+        if (hook_set)
+        {
+            output->render->rem_effect(&screensaver_frame);
+            hook_set = false;
+        }
+        output->render->add_inhibit(true);
+        output->render->damage_whole();
+        state = CUBE_SCREENSAVER_DISABLED;
+        output_inhibited = true;
+    }
+
+    void uninhibit_output()
+    {
+        if (!output_inhibited)
+        {
+            return;
+        }
+
+        output->render->add_inhibit(false);
+        output->render->damage_whole();
+        output_inhibited = false;
+    }
+
+    void screensaver_terminate()
+    {
+        cube_control_signal data;
+        data.angle = 0.0;
+        data.zoom = CUBE_ZOOM_BASE;
+        data.ease = 0.0;
+        data.last_frame = true;
+        data.carried_out = false;
+
+        output->emit_signal("cube-control", &data);
+        if (hook_set)
+        {
+            output->render->rem_effect(&screensaver_frame);
+            hook_set = false;
+        }
+        if (state == CUBE_SCREENSAVER_DISABLED)
+        {
+            uninhibit_output();
+        }
+        state = CUBE_SCREENSAVER_DISABLED;
+    }
+
+    wf::effect_hook_t screensaver_frame = [=]()
+    {
+        cube_control_signal data;
+        uint32_t current = wf::get_current_time();
+        uint32_t elapsed = current - last_time;
+
+        last_time = current;
+
+        if (state == CUBE_SCREENSAVER_STOPPING && !screensaver_animation.running())
+        {
+            screensaver_terminate();
+            return;
+        }
+
+        if (state == CUBE_SCREENSAVER_STOPPING)
+        {
+            rotation = screensaver_animation.rot;
+        }
+        else
+        {
+            rotation += (cube_rotate_speed / 5000.0) * elapsed;
+        }
+
+        if (rotation > M_PI * 2)
+        {
+            rotation -= M_PI * 2;
+        }
+
+        data.angle = rotation;
+        data.zoom = screensaver_animation.zoom;
+        data.ease = screensaver_animation.ease;
+        data.last_frame = false;
+        data.carried_out = false;
+
+        output->emit_signal("cube-control", &data);
+        if (!data.carried_out)
+        {
+            screensaver_terminate();
+            return;
+        }
+
+        if (state == CUBE_SCREENSAVER_STOPPING)
+        {
+            wlr_idle_notify_activity(wf::get_core().protocols.idle,
+                wf::get_core().get_current_seat());
+        }
+    };
+
+    void start_screensaver()
+    {
+        wf::get_core().hide_cursor();
+
+        cube_control_signal data;
+        data.angle = 0.0;
+        data.zoom = CUBE_ZOOM_BASE;
+        data.ease = 0.0;
+        data.last_frame = false;
+        data.carried_out = false;
+
+        output->emit_signal("cube-control", &data);
+        if (data.carried_out)
+        {
+            if (!hook_set)
+            {
+                output->render->add_effect(
+                    &screensaver_frame, wf::OUTPUT_EFFECT_PRE);
+                hook_set = true;
+            }
+        }
+        else if (state == CUBE_SCREENSAVER_DISABLED)
+        {
+            inhibit_output();
+            return;
+        }
+
+        state = CUBE_SCREENSAVER_RUNNING;
+
+        rotation = 0.0;
+        screensaver_animation.zoom.set(CUBE_ZOOM_BASE, cube_max_zoom);
+        screensaver_animation.ease.set(0.0, 1.0);
+        screensaver_animation.start();
+        last_time = wf::get_current_time();
+    }
+
+    void stop_screensaver()
+    {
+        wf::get_core().set_cursor("default");
+
+        if (state == CUBE_SCREENSAVER_DISABLED)
+        {
+            uninhibit_output();
+            return;
+        }
+
+        state = CUBE_SCREENSAVER_STOPPING;
+
+        double end = rotation > M_PI ? M_PI * 2 : 0.0;
+        screensaver_animation.rot.set(rotation, end);
+        screensaver_animation.zoom.restart_with_end(CUBE_ZOOM_BASE);
+        screensaver_animation.ease.restart_with_end(0.0);
+        screensaver_animation.start();
     }
 
     void fini() override
     {
+        destroy_screensaver_timeout();
         output->rem_binding(&toggle);
         singleton_plugin_t::fini();
     }

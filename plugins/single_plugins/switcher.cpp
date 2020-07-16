@@ -1,7 +1,6 @@
 #include <wayfire/plugin.hpp>
 #include <wayfire/opengl.hpp>
 #include <wayfire/view-transform.hpp>
-#include <wayfire/debug.hpp>
 #include <wayfire/core.hpp>
 
 #include <wayfire/view.hpp>
@@ -588,7 +587,7 @@ class WayfireSwitcher : public wf::plugin_interface_t
 
         transform->color[3] = sv.attribs.alpha;
         sv.view->render_transformed(output->render->get_target_framebuffer(),
-            output->render->get_target_framebuffer().get_damage_region());
+            output->render->get_target_framebuffer().geometry);
 
         transform->translation = glm::mat4();
         transform->scaling = glm::mat4();
@@ -604,14 +603,14 @@ class WayfireSwitcher : public wf::plugin_interface_t
 
         dim_background(background_dim);
         for (auto view : get_background_views())
-            view->render_transformed(fb, fb.get_damage_region());
+            view->render_transformed(fb, fb.geometry);
 
         /* Render in the reverse order because we don't use depth testing */
         for (auto& view : wf::reverse(views))
             render_view(view, fb);
 
         for (auto view : get_overlay_views())
-            view->render_transformed(fb, fb.get_damage_region());
+            view->render_transformed(fb, fb.geometry);
 
         if (!duration.running())
         {
@@ -781,7 +780,15 @@ class WayfireSwitcher : public wf::plugin_interface_t
         views.push_back(std::move(sv));
     }
 
-    // TODO:!!! fini
+    void fini() override
+    {
+        if (output->is_plugin_active(grab_interface->name))
+            deinit_switcher();
+        output->rem_binding(&next_view_binding);
+        output->rem_binding(&prev_view_binding);
+        output->rem_binding(&touch_activate);
+        output->disconnect_signal("detach-view", &view_removed);
+    }
 };
 
 DECLARE_WAYFIRE_PLUGIN(WayfireSwitcher);

@@ -116,14 +116,14 @@ void wf::LogicalPointer::update_cursor_focus(wf::surface_interface_t *focus,
 
     cursor_focus = focus;
     wlr_surface *next_focus_wlr_surface = nullptr;
-    if (focus && !compositor_surface_from_surface(focus))
+    if (focus && focus->get_wlr_surface())
     {
         next_focus_wlr_surface = focus->get_wlr_surface();
         wlr_seat_pointer_notify_enter(input->seat, next_focus_wlr_surface,
             local.x, local.y);
     } else
     {
-        wlr_seat_pointer_clear_focus(input->seat);
+        wlr_seat_pointer_notify_clear_focus(input->seat);
     }
 
     if (focus_change &&

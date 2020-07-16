@@ -27,6 +27,10 @@ It aims to create a customizable, extendable and lightweight environment without
 
 ## Dependencies
 
+### Wayfire Dependencies
+
+These are the dependencies needed for building Wayfire.
+
 - [Cairo](https://cairographics.org)
 - [FreeType](https://freetype.org)
 - [GLM](https://glm.g-truc.net)
@@ -37,13 +41,37 @@ It aims to create a customizable, extendable and lightweight environment without
 - [libjpeg](https://libjpeg-turbo.org)
 - [libpng](http://libpng.org/pub/png/libpng.html)
 - [libxkbcommon](https://xkbcommon.org)
+- [libxml2](http://xmlsoft.org/)
 - [Pixman](https://pixman.org)
 - [pkg-config](https://freedesktop.org/wiki/Software/pkg-config/)
 - [Wayland](https://wayland.freedesktop.org)
 - [wayland-protocols](https://gitlab.freedesktop.org/wayland/wayland-protocols)
 - [wf-config](https://github.com/WayfireWM/wf-config)
-- [wf-shell](https://github.com/WayfireWM/wf-shell) (optional)
 - [wlroots](https://github.com/swaywm/wlroots)
+
+### wlroots Dependencies
+
+These are the dependencies needed for building wlroots, and should be installed before building it.
+They are relevant for cases when the system doesn't have a version of wlroots installed.
+
+#### Session Provider (optional, recommended)
+
+- [systemd](https://systemd.io/) **or**
+- [elogind](https://github.com/elogind/elogind)
+
+#### XWayland Support (optional)
+
+- [xcb](https://xcb.freedesktop.org/)
+- [xcb-composite](https://xorg.freedesktop.org/wiki/)
+- [xcb-render](https://xorg.freedesktop.org/wiki/)
+- [xcb-xfixes](https://xorg.freedesktop.org/wiki/)
+
+#### X11 Backend (optional)
+
+- [xcb](https://xcb.freedesktop.org/)
+- [x11-xcb](https://xcb.freedesktop.org/)
+- [xcb-xinput](https://xorg.freedesktop.org/wiki/)
+- [xcb-xfixes](https://xorg.freedesktop.org/wiki/)
 
 ## Installation
 
@@ -60,6 +88,8 @@ sudo ninja -C build install
 **Note**: `wf-config` and `wlroots` can be built as submodules, by specifying
 `-Duse_system_wfconfig=disabled` and `-Duse_system_wlroots=disabled` options to `meson`.
 This is the default if they are not present on your system.
+
+Installing [wf-shell](https://github.com/WayfireWM/wf-shell) is recommended for a complete experience.
 
 ###### Arch Linux
 
@@ -92,8 +122,14 @@ pkg install wayfire
 ```
 
 ###### Gentoo
-Available from either of the two overlays [Guru](https://wiki.gentoo.org/wiki/Project:GURU) or [wayfire-desktop](https://github.com/epsilon-0/wayfire-desktop).  
-Look at [wayfire-desktop](https://github.com/epsilon-0/wayfire-desktop) to get full list of options and available wayfire packages.  
+Install the latest release with
+```sh
+emerge --ask --verbose wayfire
+```
+and to use the live version
+```sh
+emerge --ask --verbose "=gui-wm/wayfire-9999"
+```
 
 ###### NixOS
 

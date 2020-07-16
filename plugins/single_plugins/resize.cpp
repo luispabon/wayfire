@@ -1,12 +1,12 @@
 #include <cmath>
 #include <wayfire/plugin.hpp>
-#include <wayfire/debug.hpp>
 #include <wayfire/output.hpp>
 #include <wayfire/view.hpp>
 #include <wayfire/core.hpp>
 #include <wayfire/workspace-manager.hpp>
 #include <linux/input.h>
 #include <wayfire/signal-definitions.hpp>
+#include <wayfire/plugins/common/view-change-viewport-signal.hpp>
 
 extern "C"
 {
@@ -250,6 +250,12 @@ class wayfire_resize : public wf::plugin_interface_t
                 view->set_moving(false);
             view->set_resizing(false);
             end_wobbly(view);
+
+            view_change_viewport_signal workspace_may_changed;
+            workspace_may_changed.view = this->view;
+            workspace_may_changed.to = output->workspace->get_current_workspace();
+            workspace_may_changed.old_viewport_invalid = false;
+            output->emit_signal("view-change-viewport", &workspace_may_changed);
         }
     }
 
