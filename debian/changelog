@@ -1,3 +1,9 @@
+wayfire (1:0.4.0-luis1~disco) disco; urgency=low
+
+  * New upstream release
+
+ -- Luis Pabon <luis.pabon@auronconsulting.co.uk>  Thu, 16 Jul 2020 09:52:43 +0400
+
 wayfire (1:0.3-luis1~disco) disco; urgency=low
 
   * New upstream release
