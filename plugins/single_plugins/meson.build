@@ -1,21 +1,16 @@
-move          = shared_module('move',          'move.cpp',          include_directories: [wayfire_api_inc, wayfire_conf_inc, plugins_common_inc], dependencies: [wlroots, pixman, wfconfig], install: true, install_dir: join_paths(get_option('libdir'), 'wayfire'))
-resize        = shared_module('resize',        'resize.cpp',        include_directories: [wayfire_api_inc, wayfire_conf_inc, plugins_common_inc], dependencies: [wlroots, pixman, wfconfig], install: true, install_dir: join_paths(get_option('libdir'), 'wayfire'))
-command       = shared_module('command',       'command.cpp',       include_directories: [wayfire_api_inc, wayfire_conf_inc], dependencies: [wlroots, pixman, wfconfig], install: true, install_dir: join_paths(get_option('libdir'), 'wayfire'))
-autostart     = shared_module('autostart',     'autostart.cpp',     include_directories: [wayfire_api_inc, wayfire_conf_inc], dependencies: [wlroots, pixman, wfconfig], install: true, install_dir: join_paths(get_option('libdir'), 'wayfire'))
-vswitch       = shared_module('vswitch',       'vswitch.cpp',       include_directories: [wayfire_api_inc, wayfire_conf_inc, plugins_common_inc], dependencies: [wlroots, pixman, wfconfig], install: true, install_dir: join_paths(get_option('libdir'), 'wayfire'))
-vswipe        = shared_module('vswipe',        'vswipe.cpp',        include_directories: [wayfire_api_inc, wayfire_conf_inc, plugins_common_inc], dependencies: [wlroots, pixman, wfconfig], install: true, install_dir: join_paths(get_option('libdir'), 'wayfire'))
-grid          = shared_module('grid',          'grid.cpp',          include_directories: [wayfire_api_inc, wayfire_conf_inc, plugins_common_inc], dependencies: [wlroots, pixman, wfconfig], install: true, install_dir: join_paths(get_option('libdir'), 'wayfire'))
-wrot          = shared_module('wrot',          'wrot.cpp',          include_directories: [wayfire_api_inc, wayfire_conf_inc], dependencies: [wlroots, pixman, wfconfig], install: true, install_dir: join_paths(get_option('libdir'), 'wayfire'))
-expo          = shared_module('expo',          'expo.cpp',          include_directories: [wayfire_api_inc, wayfire_conf_inc, plugins_common_inc], dependencies: [wlroots, pixman, wfconfig], install: true, install_dir: join_paths(get_option('libdir'), 'wayfire'))
-switcher      = shared_module('switcher',      'switcher.cpp',      include_directories: [wayfire_api_inc, wayfire_conf_inc], dependencies: [wlroots, pixman, wfconfig], install: true, install_dir: join_paths(get_option('libdir'), 'wayfire'))
-fast_switcher = shared_module('fast-switcher', 'fast-switcher.cpp', include_directories: [wayfire_api_inc, wayfire_conf_inc], dependencies: [wlroots, pixman, wfconfig], install: true, install_dir: join_paths(get_option('libdir'), 'wayfire'))
-oswitch       = shared_module('oswitch',       'oswitch.cpp',       include_directories: [wayfire_api_inc, wayfire_conf_inc], dependencies: [wlroots, pixman, wfconfig], install: true, install_dir: join_paths(get_option('libdir'), 'wayfire'))
-window_rules  = shared_module('window-rules',  'window-rules.cpp',  include_directories: [wayfire_api_inc, wayfire_conf_inc], dependencies: [wlroots, pixman, wfconfig], install: true, install_dir: join_paths(get_option('libdir'), 'wayfire'))
-place         = shared_module('place',         'place.cpp',         include_directories: [wayfire_api_inc, wayfire_conf_inc], dependencies: [wlroots, pixman, wfconfig], install: true, install_dir: join_paths(get_option('libdir'), 'wayfire'))
-invert        = shared_module('invert',        'invert.cpp',        include_directories: [wayfire_api_inc, wayfire_conf_inc], dependencies: [wlroots, pixman, wfconfig], install: true, install_dir: join_paths(get_option('libdir'), 'wayfire'))
-fisheye       = shared_module('fisheye',       'fisheye.cpp',       include_directories: [wayfire_api_inc, wayfire_conf_inc], dependencies: [wlroots, pixman, wfconfig], install: true, install_dir: join_paths(get_option('libdir'), 'wayfire'))
-zoom          = shared_module('zoom',          'zoom.cpp',          include_directories: [wayfire_api_inc, wayfire_conf_inc], dependencies: [wlroots, pixman, wfconfig], install: true, install_dir: join_paths(get_option('libdir'), 'wayfire'))
-alpha         = shared_module('alpha',         'alpha.cpp',         include_directories: [wayfire_api_inc, wayfire_conf_inc], dependencies: [wlroots, pixman, wfconfig], install: true, install_dir: join_paths(get_option('libdir'), 'wayfire'))
-idle          = shared_module('idle',          'idle.cpp',          include_directories: [wayfire_api_inc, wayfire_conf_inc], dependencies: [wlroots, pixman, wfconfig], install: true, install_dir: join_paths(get_option('libdir'), 'wayfire'))
-wm_actions    = shared_module('wm-actions',    'wm-actions.cpp',    include_directories: [wayfire_api_inc, wayfire_conf_inc], dependencies: [wlroots, pixman, wfconfig], install: true, install_dir: join_paths(get_option('libdir'), 'wayfire'))
-#cvtest        = shared_module('cvtest', 'compositor-view-test.cpp', include_directories: [wayfire_api_inc, wayfire_conf_inc], dependencies: [wlroots, pixman, wfconfig], install: true, install_dir: join_paths(get_option('libdir'), 'wayfire'))
+plugins = [
+  'move', 'resize', 'command', 'autostart', 'vswipe', 'grid', 'wrot', 'expo',
+  'switcher', 'fast-switcher', 'oswitch', 'window-rules', 'place', 'invert',
+  'fisheye', 'zoom', 'alpha', 'idle', 'extra-gestures',
+]
+
+all_include_dirs = [wayfire_api_inc, wayfire_conf_inc, plugins_common_inc, vswitch_inc, wobbly_inc]
+all_deps = [wlroots, pixman, wfconfig, wftouch]
+
+foreach plugin : plugins
+  shared_module(plugin, plugin + '.cpp',
+      include_directories: all_include_dirs,
+      dependencies: all_deps,
+      install: true,
+      install_dir: conf_data.get('PLUGIN_PATH'))
+endforeach

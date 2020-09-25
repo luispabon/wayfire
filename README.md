@@ -96,7 +96,7 @@ Installing [wf-shell](https://github.com/WayfireWM/wf-shell) is recommended for 
 [wayfire] and [wayfire-git] are available in the [AUR].
 
 ``` sh
-pacman -S wayfire
+yay -S wayfire
 ```
 
 [AUR]: https://aur.archlinux.org

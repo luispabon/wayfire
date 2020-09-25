@@ -2,8 +2,10 @@
 
 #include <wayfire/view.hpp>
 #include <wayfire/core.hpp>
-#include "../wobbly/wobbly-signal.hpp"
 #include <wayfire/option-wrapper.hpp>
+#include <wayfire/plugins/wobbly/wobbly-signal.hpp>
+#include <wayfire/util/log.hpp>
+#include <wayfire/debug.hpp>
 
 namespace wf
 {
@@ -14,8 +16,6 @@ namespace wf
  * 1. Interaction with the wobbly plugin
  * 2. Support for locking tiled views in-place until a certain threshold
  * 3. Ensuring view is grabbed at the correct place
- *
- * The view is supposed to stay in the same output while operating.
  */
 class move_snap_helper_t : public wf::custom_data_t
 {
@@ -29,12 +29,17 @@ class move_snap_helper_t : public wf::custom_data_t
 
     bool view_in_slot; /* Whether the view is held at its original position */
     double px, py; /* Percentage of the view width/height from the grab point
-                      to its upper-left corner */
+                    *  to its upper-left corner */
 
     std::vector<wayfire_view> enum_views(wayfire_view view)
     {
-        if (join_views) return view->enumerate_views();
-        else return {view};
+        if (join_views)
+        {
+            return view->enumerate_views();
+        } else
+        {
+            return {view};
+        }
     }
 
   public:
@@ -46,7 +51,9 @@ class move_snap_helper_t : public wf::custom_data_t
 
         view_in_slot = should_enable_snap_off();
         for (auto v : enum_views(view))
+        {
             start_wobbly(v, grab.x, grab.y);
+        }
 
         auto wmg = view->get_wm_geometry();
         px = 1.0 * (grab.x - wmg.x) / wmg.width;
@@ -55,6 +62,12 @@ class move_snap_helper_t : public wf::custom_data_t
         view->connect_signal("geometry-changed", &view_geometry_changed);
     }
 
+    /**
+     * Destroy the move snap helper.
+     * NB: The destructor will not release the wobbly grab if input has not been
+     *   released yet! This is useful if the wobbly grab is to be "transferred"
+     *   to another plugin.
+     */
     virtual ~move_snap_helper_t()
     {
         view->set_moving(false);
@@ -71,18 +84,45 @@ class move_snap_helper_t : public wf::custom_data_t
     virtual void handle_motion(wf::point_t to)
     {
         for (auto v : enum_views(view))
+        {
             move_wobbly(v, to.x, to.y);
+        }
 
         double distance = std::sqrt((to.x - grab.x) * (to.x - grab.x) +
             (to.y - grab.y) * (to.y - grab.y));
 
         /* Reached threshold */
-        if (view_in_slot && distance >= snap_off_threshold)
+        if (view_in_slot && (distance >= snap_off_threshold))
+        {
             snap_off();
+        }
 
         /* View is stuck, we shouldn't change its geometry */
         if (view_in_slot)
+        {
             return;
+        }
+
+        this->last_grabbing_position = to;
+        adjust_around_grab();
+    }
+
+    /**
+     * Handle a new input event which is a motion of the grabbing point, for ex.
+     * cursor or touch point was moved.
+     *
+     * In contrast to handle_motion, this event causes wobbly to directly "jump"
+     * to the new position.
+     *
+     * @param to The new grab point position, in output-local coordinates.
+     */
+    virtual void handle_grab_translated(wf::point_t to)
+    {
+        wf::point_t delta = to - this->last_grabbing_position;
+        for (auto v : enum_views(view))
+        {
+            translate_wobbly(v, delta);
+        }
 
         this->last_grabbing_position = to;
         adjust_around_grab();
@@ -90,11 +130,14 @@ class move_snap_helper_t : public wf::custom_data_t
 
     /**
      * The input point was released (mouse unclicked, finger lifted, etc.)
+     * This will also release the wobbly grab.
      */
     virtual void handle_input_released()
     {
         for (auto v : enum_views(view))
+        {
             end_wobbly(v);
+        }
     }
 
     /** @return Whether the view is freely moving or stays at the same place */
@@ -107,7 +150,7 @@ class move_snap_helper_t : public wf::custom_data_t
     virtual bool should_enable_snap_off() const
     {
         return enable_snap_off &&
-            (view->tiled_edges || view->fullscreen);
+               (view->tiled_edges || view->fullscreen);
     }
 
     /** Move the view out of its slot */
@@ -115,10 +158,14 @@ class move_snap_helper_t : public wf::custom_data_t
     {
         view_in_slot = false;
         if (view->fullscreen)
+        {
             view->fullscreen_request(view->get_output(), false);
+        }
 
         if (view->tiled_edges)
+        {
             view->tile_request(0);
+        }
     }
 
     wf::point_t last_grabbing_position;
@@ -136,9 +183,60 @@ class move_snap_helper_t : public wf::custom_data_t
         view->connect_signal("geometry-changed", &view_geometry_changed);
     }
 
-    signal_callback_t view_geometry_changed = [=] (signal_data_t *)
+    signal_callback_t view_geometry_changed = [=] (signal_data_t*)
     {
         adjust_around_grab();
     };
 };
+
+/**
+ * Add a move helper to the view if not already present, otherwise, move the
+ * grab to the given point.
+ */
+void ensure_move_helper_at(wayfire_view view, wf::point_t point)
+{
+    auto helper = view->get_data<wf::move_snap_helper_t>();
+    if (helper != nullptr)
+    {
+        helper->handle_grab_translated(point);
+    } else
+    {
+        view->store_data(std::make_unique<wf::move_snap_helper_t>(view, point));
+    }
+}
+
+/**
+ * name: view-move-check
+ * on: output
+ * when: A plugin can emit this signal on an output to check whether there is a
+ *   plugin on that output which can continue an interactive move operation.
+ */
+struct view_move_check_signal : public _view_signal
+{
+    /** A plugin should set this to true if it can continue a move operation. */
+    bool can_continue = false;
+};
+
+/**
+ * Check whether we can start an interactive move on the other output.
+ */
+bool can_start_move_on_output(wayfire_view view, wf::output_t *output)
+{
+    view_move_check_signal check;
+    check.view = view;
+    output->emit_signal("view-move-check", &check);
+
+    return check.can_continue;
+}
+
+/**
+ * Start an interactive move on another output.
+ * Precondition: the view is being moved with the snap helper.
+ */
+void start_move_on_output(wayfire_view view, wf::output_t *output)
+{
+    wf::get_core().move_view_to_output(view, output, false);
+    wf::get_core().focus_output(output);
+    view->move_request();
+}
 }

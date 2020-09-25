@@ -84,15 +84,10 @@
  * |                                                               |
  * `````````````````````````````````````````````````````````````````
  */
-struct wf_blur_default_option_values
-{
-    std::string algorithm_name;
-    std::string offset, degrade, iterations;
-};
 
 class wf_blur_base
 {
-    protected:
+  protected:
     /* used to store temporary results in blur algorithms, cleaned up in base
      * destructor */
     wf::framebuffer_base_t fb[2];
@@ -128,9 +123,8 @@ class wf_blur_base
      * returns the index of the fb where the result is stored (0 or 1) */
     virtual int blur_fb0(const wf::region_t& blur_region, int width, int height) = 0;
 
-    public:
-    wf_blur_base(wf::output_t *output,
-        const wf_blur_default_option_values& values);
+  public:
+    wf_blur_base(wf::output_t *output, std::string name);
     virtual ~wf_blur_base();
 
     virtual int calculate_blur_radius();

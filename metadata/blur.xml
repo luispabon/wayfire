@@ -50,7 +50,7 @@
 		<option name="box_offset" type="double">
 			<_short>Box offset</_short>
 			<_long>Sets the offset value for the box method.</_long>
-			<default>2</default>
+			<default>1</default>
 			<min>0</min>
 			<max>25</max>
 		</option>
@@ -72,7 +72,7 @@
 		<option name="gaussian_offset" type="double">
 			<_short>Gaussian offset</_short>
 			<_long>Sets the offset value for the gaussian method.</_long>
-			<default>2</default>
+			<default>1</default>
 			<min>0</min>
 			<max>25</max>
 		</option>

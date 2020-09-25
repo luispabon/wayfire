@@ -7,3 +7,6 @@
 [submodule "subprojects/wf-utils"]
 	path = subprojects/wf-utils
 	url = https://github.com/WayfireWM/wf-utils.git
+[submodule "subprojects/wf-touch"]
+	path = subprojects/wf-touch
+	url = https://github.com/WayfireWM/wf-touch

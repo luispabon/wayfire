@@ -1,14 +1,14 @@
 #include "blur.hpp"
 
-static const char* box_vertex_shader =
-R"(
+static const char *box_vertex_shader =
+    R"(
 #version 100
 
 attribute mediump vec2 position;
 uniform vec2 size;
 uniform float offset;
 
-varying highp vec2 blurcoord[9];
+varying highp vec2 blurcoord[5];
 
 void main() {
     gl_Position = vec4(position.xy, 0.0, 1.0);
@@ -16,77 +16,65 @@ void main() {
     vec2 texcoord = (position.xy + vec2(1.0, 1.0)) / 2.0;
 
     blurcoord[0] = texcoord;
-    blurcoord[1] = texcoord + vec2(1.0 * offset) / size;
-    blurcoord[2] = texcoord - vec2(1.0 * offset) / size;
-    blurcoord[3] = texcoord + vec2(2.0 * offset) / size;
-    blurcoord[4] = texcoord - vec2(2.0 * offset) / size;
-    blurcoord[5] = texcoord + vec2(3.0 * offset) / size;
-    blurcoord[6] = texcoord - vec2(3.0 * offset) / size;
-    blurcoord[7] = texcoord + vec2(4.0 * offset) / size;
-    blurcoord[8] = texcoord - vec2(4.0 * offset) / size;
+    blurcoord[1] = texcoord + vec2(1.5 * offset) / size;
+    blurcoord[2] = texcoord - vec2(1.5 * offset) / size;
+    blurcoord[3] = texcoord + vec2(3.5 * offset) / size;
+    blurcoord[4] = texcoord - vec2(3.5 * offset) / size;
 }
 )";
 
-static const char* box_fragment_shader_horz =
-R"(
+static const char *box_fragment_shader_horz =
+    R"(
 #version 100
 precision mediump float;
 
 uniform sampler2D bg_texture;
 uniform int mode;
 
-varying highp vec2 blurcoord[9];
+varying highp vec2 blurcoord[5];
 
 void main()
 {
     vec2 uv = blurcoord[0];
     vec4 bp = vec4(0.0);
-    for(int i = 0; i < 9; i++) {
+    for(int i = 0; i < 5; i++) {
         vec2 uv = vec2(blurcoord[i].x, uv.y);
         bp += texture2D(bg_texture, uv);
     }
 
-    gl_FragColor = bp / 9.0;
+    gl_FragColor = bp / 5.0;
 }
 )";
 
-static const char* box_fragment_shader_vert =
-R"(
+static const char *box_fragment_shader_vert =
+    R"(
 #version 100
 precision mediump float;
 
 uniform sampler2D bg_texture;
 uniform int mode;
 
-varying highp vec2 blurcoord[9];
+varying highp vec2 blurcoord[5];
 
 void main()
 {
     vec2 uv = blurcoord[0];
     vec4 bp = vec4(0.0);
-    for(int i = 0; i < 9; i++) {
+    for(int i = 0; i < 5; i++) {
         vec2 uv = vec2(uv.x, blurcoord[i].y);
         bp += texture2D(bg_texture, uv);
     }
-    gl_FragColor = bp / 9.0;
+    gl_FragColor = bp / 5.0;
 }
 )";
 
-static const wf_blur_default_option_values box_defaults = {
-    .algorithm_name = "box",
-    .offset = "2",
-    .degrade = "1",
-    .iterations = "2"
-};
-
 class wf_box_blur : public wf_blur_base
 {
-    public:
+  public:
     void get_id_locations(int i)
-    {
-        }
+    {}
 
-    wf_box_blur(wf::output_t *output) : wf_blur_base(output, box_defaults)
+    wf_box_blur(wf::output_t *output) : wf_blur_base(output, "box")
     {
         OpenGL::render_begin();
         program[0].set_simple(OpenGL::compile_program(
@@ -101,9 +89,9 @@ class wf_box_blur : public wf_blur_base
         float offset = offset_opt;
         static const float vertexData[] = {
             -1.0f, -1.0f,
-             1.0f, -1.0f,
-             1.0f,  1.0f,
-            -1.0f,  1.0f
+            1.0f, -1.0f,
+            1.0f, 1.0f,
+            -1.0f, 1.0f
         };
 
         program[i].use(wf::TEXTURE_TYPE_RGBA);
@@ -130,7 +118,8 @@ class wf_box_blur : public wf_blur_base
         upload_data(0, width, height);
         upload_data(1, width, height);
 
-        for (i = 0; i < iterations; i++) {
+        for (i = 0; i < iterations; i++)
+        {
             /* Blur horizontally */
             blur(blur_region, 0, width, height);
 
@@ -157,5 +146,5 @@ class wf_box_blur : public wf_blur_base
 
 std::unique_ptr<wf_blur_base> create_box_blur(wf::output_t *output)
 {
-    return std::make_unique<wf_box_blur> (output);
+    return std::make_unique<wf_box_blur>(output);
 }
